@@ -98,9 +98,9 @@ async function callMultimodalModel(model: string, messages: MultimodalMessage[],
 
 /**
  * 用Qwen-VL识别图片/PDF中的表格数据
- * 传入图片的公开URL
+ * 支持传入图片URL或data URI（data:image/png;base64,xxx）
  */
-export async function ocrWithVL(imageUrl: string): Promise<string> {
+export async function ocrWithVL(imageSource: string): Promise<string> {
   const messages: MultimodalMessage[] = [
     {
       role: 'system',
@@ -110,7 +110,7 @@ export async function ocrWithVL(imageUrl: string): Promise<string> {
       role: 'user',
       content: [
         { type: 'text', text: '请识别这张报价单图片中的所有表格数据，输出标准JSON格式：' },
-        { type: 'image', image: imageUrl },
+        { type: 'image', image: imageSource },
       ],
     },
   ]

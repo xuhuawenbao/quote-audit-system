@@ -39,11 +39,17 @@ export async function POST(request: NextRequest) {
       // 本地规则引擎审核
       auditResult = auditQuote(items, doc)
     } else {
-      // PDF或图片：调用百炼OCR（传入Supabase文件URL）
+      // PDF或图片：调用百炼OCR（传入图片base64）
       fileType = fileExt === 'pdf' ? 'pdf' : 'image'
       
       try {
-        extractedData = await ocrWithVL(fileUrl)
+        // 读取文件内容转为base64 data URI
+        const arrayBuffer = await file.arrayBuffer()
+        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        const mimeType = file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png')
+        const dataUri = `data:${mimeType};base64,${base64}`
+        
+        extractedData = await ocrWithVL(dataUri)
       } catch (ocrErr: any) {
         // OCR失败时，用空数据兜底
         extractedData = '{"items":[]}'

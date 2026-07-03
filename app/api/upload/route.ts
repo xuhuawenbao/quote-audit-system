@@ -39,13 +39,10 @@ export async function POST(request: NextRequest) {
       // 本地规则引擎审核
       auditResult = auditQuote(items, doc)
     } else {
-      // PDF或图片：调用百炼OCR
+      // PDF或图片：调用百炼OCR（传入Supabase文件URL）
       fileType = fileExt === 'pdf' ? 'pdf' : 'image'
-      const buffer = await file.arrayBuffer()
-      const base64 = Buffer.from(buffer).toString('base64')
-      const mimeType = file.type || 'image/png'
       
-      extractedData = await ocrWithVL(base64, mimeType)
+      extractedData = await ocrWithVL(fileUrl)
       
       // LLM审核
       const llmResult = await auditWithLLM(extractedData, fileType)

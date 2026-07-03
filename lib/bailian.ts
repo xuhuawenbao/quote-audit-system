@@ -51,7 +51,8 @@ async function callTextModel(model: string, messages: TextMessage[], temperature
   }
 
   const data = await resp.json()
-  return data.output?.choices?.[0]?.message?.content || ''
+  const rawContent = data.output?.choices?.[0]?.message?.content
+  return String(rawContent || '')
 }
 
 /**
@@ -77,7 +78,14 @@ async function callMultimodalModel(model: string, messages: MultimodalMessage[],
   }
 
   const data = await resp.json()
-  return data.output?.choices?.[0]?.message?.content || ''
+  const rawContent = data.output?.choices?.[0]?.message?.content
+  
+  // 多模态模型可能返回数组格式 [{text: "xxx"}]
+  if (Array.isArray(rawContent)) {
+    return rawContent.map((item: any) => item.text || '').join('')
+  }
+  
+  return String(rawContent || '')
 }
 
 /**
@@ -154,9 +162,10 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
  * 从文本中提取JSON
  */
 function extractJsonFromText(text: string): string {
+  if (typeof text !== 'string' || !text) return '{}'
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     return jsonMatch[0]
   }
-  return text
+  return '{}'
 }

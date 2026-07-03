@@ -107,6 +107,11 @@ export async function POST(request: NextRequest) {
       success: true,
       recordId: record.id,
       auditResult,
+      debug: {
+        fileType,
+        fileSize: fileBytes.length,
+        extractedDataPreview: extractedData.substring(0, 500),
+      }
     })
 
   } catch (error: any) {

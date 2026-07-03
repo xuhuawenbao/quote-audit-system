@@ -102,6 +102,13 @@ export default function UploadPage() {
           <p className="text-gray-600">上传报价单，自动审核数据完整性</p>
         </div>
 
+        {result?.debug && (
+          <div className="mt-4 bg-gray-50 p-3 rounded-lg text-xs text-gray-500">
+            <p>调试: 文件大小 {result.debug.fileSize} bytes | 类型: {result.debug.fileType}</p>
+            <p className="mt-1">OCR识别预览: {result.debug.extractedDataPreview || '(空)'}</p>
+          </div>
+        )}
+
         {!result ? (
           <div className="bg-white rounded-2xl shadow-xl p-6 animate-fade-in">
             {/* 信息填写 */}

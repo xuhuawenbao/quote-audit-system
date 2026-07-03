@@ -1,38 +1,18 @@
 /**
- * 阿里云百炼 API 封装
- * OCR: Qwen-VL-Plus 视觉模型识别图片/PDF中的表格
- * LLM审核: qwen-plus 按规则审核
+ * 阿里云百炼 API 封装（OpenAI兼容模式）
+ * 与WorkBuddy中的调用方式保持一致
  */
 
 const API_KEY = process.env.BAILIAN_API_KEY!
-const BASE_URL = 'https://dashscope.aliyuncs.com/api/v1'
+const BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 
-// 文本生成端点（用于qwen-plus等纯文本模型）
-const TEXT_GEN_URL = `${BASE_URL}/services/aigc/text-generation/generation`
-// 多模态端点（用于qwen-vl-plus等视觉模型）
-const MULTIMODAL_URL = `${BASE_URL}/services/aigc/multimodal-generation/generation`
-
-interface TextMessage {
+interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
 }
 
-interface MultimodalContentItem {
-  type: 'text' | 'image'
-  text?: string
-  image?: string
-}
-
-interface MultimodalMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string | MultimodalContentItem[]
-}
-
-/**
- * 调用纯文本生成模型（qwen-plus等）
- */
-async function callTextModel(model: string, messages: TextMessage[], temperature = 0.1) {
-  const resp = await fetch(TEXT_GEN_URL, {
+async function callChat(model: string, messages: ChatMessage[], temperature = 0.1) {
+  const resp = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -40,8 +20,8 @@ async function callTextModel(model: string, messages: TextMessage[], temperature
     },
     body: JSON.stringify({
       model,
-      input: { messages },
-      parameters: { temperature, result_format: 'message' },
+      messages,
+      temperature,
     }),
   })
 
@@ -51,71 +31,35 @@ async function callTextModel(model: string, messages: TextMessage[], temperature
   }
 
   const data = await resp.json()
-  const rawContent = data.output?.choices?.[0]?.message?.content
-  return String(rawContent || '')
-}
-
-/**
- * 调用多模态模型（qwen-vl-plus等）
- */
-async function callMultimodalModel(model: string, messages: MultimodalMessage[], temperature = 0.1) {
-  try {
-    const resp = await fetch(MULTIMODAL_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model,
-        input: { messages },
-        parameters: { temperature, result_format: 'message' },
-      }),
-    })
-
-    if (!resp.ok) {
-      const errText = await resp.text()
-      console.error('百炼多模态API HTTP错误:', resp.status, errText)
-      return ''
-    }
-
-    const data = await resp.json()
-    const rawContent = data.output?.choices?.[0]?.message?.content
-
-    // 多模态模型可能返回数组格式 [{text: "xxx"}]
-    if (Array.isArray(rawContent)) {
-      return rawContent.map((item: any) => (item && typeof item.text === 'string') ? item.text : '').join('')
-    }
-    
-    // 确保返回字符串
-    if (rawContent === null || rawContent === undefined) return ''
-    return String(rawContent)
-  } catch (err: any) {
-    console.error('百炼多模态调用异常:', err.message || err)
-    return ''
-  }
+  return data.choices?.[0]?.message?.content || ''
 }
 
 /**
  * 用Qwen-VL识别图片/PDF中的表格数据
- * 支持传入图片URL或data URI（data:image/png;base64,xxx）
+ * 传入图片的base64 data URI
  */
-export async function ocrWithVL(imageSource: string): Promise<string> {
-  const messages: MultimodalMessage[] = [
+export async function ocrWithVL(imageDataUri: string): Promise<string> {
+  const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: '你是一个专业的文档识别助手。请识别图片中的报价单表格数据，以JSON格式输出。注意：1）仔细识别每个单元格的内容 2）税率如果是百分比（如13%）转为0.13 3）数字要去掉货币符号和逗号 4）输出格式：{"items":[{"序号":"","商品名称":"","规格型号":"","品牌":"","单位":"","数量":"","不含税单价":"","税率":"","含税单价":"","含税金额":""}]} 5）每个字段都要从图片中精确提取，不确定的字段输出空字符串。'
+      content: '你是一个专业的文档表格识别助手。请识别图片中的报价单表格，只输出JSON数据，不要任何解释。'
     },
     {
       role: 'user',
       content: [
-        { type: 'text', text: '请识别这张报价单图片中的所有表格数据，输出标准JSON格式：' },
-        { type: 'image', image: imageSource },
+        { 
+          type: 'text', 
+          text: '请识别这张报价单图片中的所有表格数据，以JSON格式输出。要求：1）每个单元格都要识别 2）税率如果是百分比（如13%）转为小数0.13 3）输出格式：{"items":[{"序号":"","商品名称":"","规格型号":"","品牌":"","单位":"","数量":"","不含税单价":"","税率":"","含税单价":"","含税金额":""}]} 4）只输出JSON，不要任何解释文字。'
+        },
+        { 
+          type: 'image_url', 
+          image_url: { url: imageDataUri }
+        },
       ],
     },
   ]
 
-  const result = await callMultimodalModel('qwen-vl-plus', messages, 0.1)
+  const result = await callChat('qwen-vl-plus', messages, 0.1)
   return extractJsonFromText(result)
 }
 
@@ -158,12 +102,12 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
 
 注意：空行（核心字段全部为空）应跳过，不报错。`
 
-  const messages: TextMessage[] = [
+  const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: `请审核以下从${fileType}文件中提取的报价单数据：\n\n${extractedData}` },
   ]
 
-  return await callTextModel('qwen-plus', messages, 0.1)
+  return await callChat('qwen-plus', messages, 0.1)
 }
 
 /**
@@ -171,9 +115,21 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
  */
 function extractJsonFromText(text: string): string {
   if (typeof text !== 'string' || !text) return '{}'
+  
+  // 尝试从markdown代码块中提取
+  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    const jsonStr = codeBlockMatch[1].trim()
+    if (jsonStr.startsWith('{') || jsonStr.startsWith('[')) {
+      return jsonStr
+    }
+  }
+  
+  // 尝试直接匹配JSON
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     return jsonMatch[0]
   }
+  
   return '{}'
 }

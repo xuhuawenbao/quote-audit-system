@@ -3,14 +3,13 @@
 import { useEffect, useState } from 'react'
 import { Shield, LogOut, FileSpreadsheet, FileImage, FileText, CheckCircle, AlertCircle, Calendar, User } from 'lucide-react'
 
-const ADMIN_PASSWORD = 'admin123' // 生产环境应从环境变量读取
-
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false)
   const [password, setPassword] = useState('')
   const [records, setRecords] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState<any>(null)
+  const [loginError, setLoginError] = useState('')
 
   useEffect(() => {
     if (authenticated) {
@@ -33,11 +32,23 @@ export default function AdminPage() {
     }
   }
 
-  const handleLogin = () => {
-    if (password === ADMIN_PASSWORD) {
-      setAuthenticated(true)
-    } else {
-      alert('密码错误')
+  const handleLogin = async () => {
+    setLoginError('')
+    try {
+      const resp = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+
+      const data = await resp.json()
+      if (data.success) {
+        setAuthenticated(true)
+      } else {
+        setLoginError(data.error || '密码错误')
+      }
+    } catch {
+      setLoginError('登录请求失败')
     }
   }
 
@@ -68,9 +79,12 @@ export default function AdminPage() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="请输入密码"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent outline-none mb-4"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent outline-none mb-2"
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
+          {loginError && (
+            <p className="text-danger text-sm mb-3">{loginError}</p>
+          )}
           <button
             onClick={handleLogin}
             className="w-full bg-accent hover:bg-primary text-white font-semibold py-3 rounded-lg transition-colors"

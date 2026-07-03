@@ -7,13 +7,58 @@
 const API_KEY = process.env.BAILIAN_API_KEY!
 const BASE_URL = 'https://dashscope.aliyuncs.com/api/v1'
 
-interface BailianMessage {
+// 文本生成端点（用于qwen-plus等纯文本模型）
+const TEXT_GEN_URL = `${BASE_URL}/services/aigc/text-generation/generation`
+// 多模态端点（用于qwen-vl-plus等视觉模型）
+const MULTIMODAL_URL = `${BASE_URL}/services/aigc/multimodal-generation/generation`
+
+interface TextMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string | Array<{ type: string; text?: string; image?: string }>
+  content: string
 }
 
-async function callBailian(model: string, messages: BailianMessage[], temperature = 0.1) {
-  const resp = await fetch(`${BASE_URL}/services/aigc/text-generation/generation`, {
+interface MultimodalContentItem {
+  type: 'text' | 'image'
+  text?: string
+  image?: string
+}
+
+interface MultimodalMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string | MultimodalContentItem[]
+}
+
+/**
+ * 调用纯文本生成模型（qwen-plus等）
+ */
+async function callTextModel(model: string, messages: TextMessage[], temperature = 0.1) {
+  const resp = await fetch(TEXT_GEN_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      input: { messages },
+      parameters: { temperature, result_format: 'message' },
+    }),
+  })
+
+  if (!resp.ok) {
+    const err = await resp.text()
+    throw new Error(`百炼API错误: ${err}`)
+  }
+
+  const data = await resp.json()
+  return data.output?.choices?.[0]?.message?.content || ''
+}
+
+/**
+ * 调用多模态模型（qwen-vl-plus等）
+ */
+async function callMultimodalModel(model: string, messages: MultimodalMessage[], temperature = 0.1) {
+  const resp = await fetch(MULTIMODAL_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -39,8 +84,8 @@ async function callBailian(model: string, messages: BailianMessage[], temperatur
  * 用Qwen-VL识别图片/PDF中的表格数据
  * 将图片转为base64传入
  */
-export async function ocrWithVL(imageBase64: string, mimeType: string = 'image/png'): Promise<string> {
-  const messages: BailianMessage[] = [
+export async function ocrWithVL(imageBase64: string): Promise<string> {
+  const messages: MultimodalMessage[] = [
     {
       role: 'system',
       content: '你是一个专业的文档识别助手。请仔细识别图片中的报价单表格数据，以JSON格式输出所有行数据。输出格式：{"items":[{"序号":"","商品名称":"","规格型号":"","品牌":"","单位":"","数量":"","不含税单价":"","税率":"","含税单价":"","含税金额":""}]}。如果某字段为空，输出空字符串。'
@@ -49,12 +94,12 @@ export async function ocrWithVL(imageBase64: string, mimeType: string = 'image/p
       role: 'user',
       content: [
         { type: 'text', text: '请识别这张报价单图片中的所有表格数据，输出标准JSON格式：' },
-        { type: 'image', image: `data:${mimeType};base64,${imageBase64}` },
+        { type: 'image', image: imageBase64 },
       ],
     },
   ]
 
-  const result = await callBailian('qwen-vl-plus', messages, 0.1)
+  const result = await callMultimodalModel('qwen-vl-plus', messages, 0.1)
   return extractJsonFromText(result)
 }
 
@@ -97,12 +142,12 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
 
 注意：空行（核心字段全部为空）应跳过，不报错。`
 
-  const messages: BailianMessage[] = [
+  const messages: TextMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: `请审核以下从${fileType}文件中提取的报价单数据：\n\n${extractedData}` },
   ]
 
-  return await callBailian('qwen-plus', messages, 0.1)
+  return await callTextModel('qwen-plus', messages, 0.1)
 }
 
 /**

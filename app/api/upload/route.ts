@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, uploadFile, getFileUrl, saveRecord } from '@/lib/supabase'
 import { auditQuote, parseExcelData } from '@/lib/audit-engine'
-import { ocrWithVL, auditWithLLM } from '@/lib/bailian'
+import { ocrWithVL, auditWithLLM, extractJsonFromText } from '@/lib/bailian'
 import * as XLSX from 'xlsx'
 
 export async function POST(request: NextRequest) {
@@ -65,9 +65,12 @@ export async function POST(request: NextRequest) {
       try {
         console.log(`[LLM] 开始审核，数据长度: ${extractedData.length}`)
         const llmResult = await auditWithLLM(extractedData, fileType)
-        console.log(`[LLM] 审核结果: ${llmResult.substring(0, 200)}`)
+        console.log(`[LLM] 原始结果: ${llmResult.substring(0, 300)}`)
         try {
-          auditResult = JSON.parse(llmResult)
+          // 先从markdown代码块中提取JSON
+          const jsonStr = extractJsonFromText(llmResult)
+          console.log(`[LLM] 提取JSON: ${jsonStr.substring(0, 300)}`)
+          auditResult = JSON.parse(jsonStr)
         } catch {
           auditResult = {
             status: 'failed',

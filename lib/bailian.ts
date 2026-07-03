@@ -111,9 +111,9 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
 }
 
 /**
- * 从文本中提取JSON
+ * 从文本中提取JSON（支持markdown代码块）
  */
-function extractJsonFromText(text: string): string {
+export function extractJsonFromText(text: string): string {
   if (typeof text !== 'string' || !text) return '{}'
   
   // 尝试从markdown代码块中提取
@@ -125,7 +125,7 @@ function extractJsonFromText(text: string): string {
     }
   }
   
-  // 尝试直接匹配JSON
+  // 尝试直接匹配JSON对象/数组
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     return jsonMatch[0]

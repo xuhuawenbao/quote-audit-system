@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, uploadFile, getFileUrl, saveRecord } from '@/lib/supabase'
+import { supabase, saveRecord } from '@/lib/supabase'
 import { auditQuote, parseExcelData } from '@/lib/audit-engine'
 import { ocrWithVL, auditWithLLM, extractJsonFromText } from '@/lib/bailian'
 import * as XLSX from 'xlsx'
@@ -15,18 +15,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
 
-    // 1. 先读取文件内容（避免上传后流被消费）
+    // 1. 读取文件内容
     const fileExt = file.name.split('.').pop()?.toLowerCase()
     const fileBuffer = await file.arrayBuffer()
     const fileBytes = Buffer.from(fileBuffer)
-    
-    // 2. 上传文件到Supabase Storage（用Buffer重新构造Blob）
-    const filePath = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
-    const uploadBlob = new Blob([fileBytes])
-    await uploadFile(uploadBlob as any, filePath)
-    const fileUrl = getFileUrl(filePath)
 
-    // 3. 判断文件类型并提取数据
+    // 2. 判断文件类型并提取数据
     let extractedData: string = ''
     let fileType: 'excel' | 'pdf' | 'image' = 'image'
     let auditResult: any
@@ -52,24 +46,17 @@ export async function POST(request: NextRequest) {
         const mimeType = file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png')
         const dataUri = `data:${mimeType};base64,${base64}`
         
-        console.log(`[OCR] 开始识别，data URI长度: ${dataUri.length}`)
         extractedData = await ocrWithVL(dataUri)
-        console.log(`[OCR] 识别结果: ${extractedData.substring(0, 200)}`)
       } catch (ocrErr: any) {
-        // OCR失败时，用空数据兜底
         extractedData = '{"items":[]}'
         console.error('[OCR] 识别失败:', ocrErr)
       }
       
-      // LLM审核（即使OCR返回空数据也能走流程）
+      // LLM审核
       try {
-        console.log(`[LLM] 开始审核，数据长度: ${extractedData.length}`)
         const llmResult = await auditWithLLM(extractedData, fileType)
-        console.log(`[LLM] 原始结果: ${llmResult.substring(0, 300)}`)
         try {
-          // 先从markdown代码块中提取JSON
           const jsonStr = extractJsonFromText(llmResult)
-          console.log(`[LLM] 提取JSON: ${jsonStr.substring(0, 300)}`)
           auditResult = JSON.parse(jsonStr)
         } catch {
           auditResult = {
@@ -81,7 +68,6 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (llmErr: any) {
-        // LLM调用失败时，用本地引擎做基础校验
         auditResult = {
           status: 'failed',
           documentLevel: { titleValid: false, validityPeriodValid: false, errors: [] },
@@ -93,12 +79,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. 保存记录到数据库
+    // 3. 保存记录到数据库（不保存文件URL，避免上传耗时）
     const record = await saveRecord({
       submitterName,
       projectName,
       fileName: file.name,
-      fileUrl,
+      fileUrl: undefined,
       fileType,
       auditResult: {
         ...auditResult,
@@ -110,11 +96,6 @@ export async function POST(request: NextRequest) {
       success: true,
       recordId: record.id,
       auditResult,
-      debug: {
-        fileType,
-        fileSize: fileBytes.length,
-        extractedDataPreview: extractedData.substring(0, 500),
-      }
     })
 
   } catch (error: any) {

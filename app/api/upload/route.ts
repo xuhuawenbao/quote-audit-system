@@ -15,21 +15,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少必要参数' }, { status: 400 })
     }
 
-    // 1. 上传文件到Supabase Storage
+    // 1. 先读取文件内容（避免上传后流被消费）
     const fileExt = file.name.split('.').pop()?.toLowerCase()
+    const fileBuffer = await file.arrayBuffer()
+    const fileBytes = Buffer.from(fileBuffer)
+    
+    // 2. 上传文件到Supabase Storage（用Buffer重新构造Blob）
     const filePath = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
-    await uploadFile(file, filePath)
+    const uploadBlob = new Blob([fileBytes])
+    await uploadFile(uploadBlob as any, filePath)
     const fileUrl = getFileUrl(filePath)
 
-    // 2. 判断文件类型并提取数据
+    // 3. 判断文件类型并提取数据
     let extractedData: string = ''
     let fileType: 'excel' | 'pdf' | 'image' = 'image'
     let auditResult: any
 
     if (fileExt === 'xlsx' || fileExt === 'xls') {
       fileType = 'excel'
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
+      const workbook = XLSX.read(fileBuffer, { type: 'array' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][]
       
@@ -43,22 +47,25 @@ export async function POST(request: NextRequest) {
       fileType = fileExt === 'pdf' ? 'pdf' : 'image'
       
       try {
-        // 读取文件内容转为base64 data URI
-        const arrayBuffer = await file.arrayBuffer()
-        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        // 转为base64 data URI
+        const base64 = fileBytes.toString('base64')
         const mimeType = file.type || (fileType === 'pdf' ? 'application/pdf' : 'image/png')
         const dataUri = `data:${mimeType};base64,${base64}`
         
+        console.log(`[OCR] 开始识别，data URI长度: ${dataUri.length}`)
         extractedData = await ocrWithVL(dataUri)
+        console.log(`[OCR] 识别结果: ${extractedData.substring(0, 200)}`)
       } catch (ocrErr: any) {
         // OCR失败时，用空数据兜底
         extractedData = '{"items":[]}'
-        console.error('OCR识别失败:', ocrErr)
+        console.error('[OCR] 识别失败:', ocrErr)
       }
       
       // LLM审核（即使OCR返回空数据也能走流程）
       try {
+        console.log(`[LLM] 开始审核，数据长度: ${extractedData.length}`)
         const llmResult = await auditWithLLM(extractedData, fileType)
+        console.log(`[LLM] 审核结果: ${llmResult.substring(0, 200)}`)
         try {
           auditResult = JSON.parse(llmResult)
         } catch {
@@ -79,7 +86,7 @@ export async function POST(request: NextRequest) {
           summary: 'AI审核服务暂时不可用，请稍后重试',
           createdAt: new Date().toISOString(),
         }
-        console.error('LLM审核失败:', llmErr.message)
+        console.error('[LLM] 审核失败:', llmErr.message)
       }
     }
 

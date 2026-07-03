@@ -94,7 +94,7 @@ export async function ocrWithVL(imageBase64: string): Promise<string> {
       role: 'user',
       content: [
         { type: 'text', text: '请识别这张报价单图片中的所有表格数据，输出标准JSON格式：' },
-        { type: 'image', image: imageBase64 },
+        { type: 'image', image: `data:image/png;base64,${imageBase64}` },
       ],
     },
   ]

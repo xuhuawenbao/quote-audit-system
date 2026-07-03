@@ -59,33 +59,41 @@ async function callTextModel(model: string, messages: TextMessage[], temperature
  * 调用多模态模型（qwen-vl-plus等）
  */
 async function callMultimodalModel(model: string, messages: MultimodalMessage[], temperature = 0.1) {
-  const resp = await fetch(MULTIMODAL_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      input: { messages },
-      parameters: { temperature, result_format: 'message' },
-    }),
-  })
+  try {
+    const resp = await fetch(MULTIMODAL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: { messages },
+        parameters: { temperature, result_format: 'message' },
+      }),
+    })
 
-  if (!resp.ok) {
-    const err = await resp.text()
-    throw new Error(`百炼API错误: ${err}`)
-  }
+    if (!resp.ok) {
+      const errText = await resp.text()
+      console.error('百炼多模态API HTTP错误:', resp.status, errText)
+      return ''
+    }
 
-  const data = await resp.json()
-  const rawContent = data.output?.choices?.[0]?.message?.content
-  
-  // 多模态模型可能返回数组格式 [{text: "xxx"}]
-  if (Array.isArray(rawContent)) {
-    return rawContent.map((item: any) => item.text || '').join('')
+    const data = await resp.json()
+    const rawContent = data.output?.choices?.[0]?.message?.content
+
+    // 多模态模型可能返回数组格式 [{text: "xxx"}]
+    if (Array.isArray(rawContent)) {
+      return rawContent.map((item: any) => (item && typeof item.text === 'string') ? item.text : '').join('')
+    }
+    
+    // 确保返回字符串
+    if (rawContent === null || rawContent === undefined) return ''
+    return String(rawContent)
+  } catch (err: any) {
+    console.error('百炼多模态调用异常:', err.message || err)
+    return ''
   }
-  
-  return String(rawContent || '')
 }
 
 /**

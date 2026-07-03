@@ -42,21 +42,38 @@ export async function POST(request: NextRequest) {
       // PDF或图片：调用百炼OCR（传入Supabase文件URL）
       fileType = fileExt === 'pdf' ? 'pdf' : 'image'
       
-      extractedData = await ocrWithVL(fileUrl)
-      
-      // LLM审核
-      const llmResult = await auditWithLLM(extractedData, fileType)
       try {
-        auditResult = JSON.parse(llmResult)
-      } catch {
-        // 如果LLM返回的不是标准JSON，用本地引擎兜底
+        extractedData = await ocrWithVL(fileUrl)
+      } catch (ocrErr: any) {
+        // OCR失败时，用空数据兜底
+        extractedData = '{"items":[]}'
+        console.error('OCR识别失败:', ocrErr)
+      }
+      
+      // LLM审核（即使OCR返回空数据也能走流程）
+      try {
+        const llmResult = await auditWithLLM(extractedData, fileType)
+        try {
+          auditResult = JSON.parse(llmResult)
+        } catch {
+          auditResult = {
+            status: 'failed',
+            documentLevel: { titleValid: false, validityPeriodValid: false, errors: [] },
+            lineItems: { totalLines: 0, validLines: 0, errors: [] },
+            summary: '审核结果解析异常，请确认报价单图片是否清晰',
+            createdAt: new Date().toISOString(),
+          }
+        }
+      } catch (llmErr: any) {
+        // LLM调用失败时，用本地引擎做基础校验
         auditResult = {
           status: 'failed',
           documentLevel: { titleValid: false, validityPeriodValid: false, errors: [] },
           lineItems: { totalLines: 0, validLines: 0, errors: [] },
-          summary: '审核服务暂时异常，请稍后重试',
+          summary: 'AI审核服务暂时不可用，请稍后重试',
           createdAt: new Date().toISOString(),
         }
+        console.error('LLM审核失败:', llmErr.message)
       }
     }
 

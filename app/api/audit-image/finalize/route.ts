@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auditQuote } from '@/lib/audit-engine'
 import { checkPrices } from '@/lib/price-check'
-import { extractJsonFromText } from '@/lib/bailian'
+import { extractJsonFromText, extractDocFromRawText } from '@/lib/bailian'
 import { saveRecord } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const jsonStr = extractJsonFromText(structuredJson)
     const parsed = JSON.parse(jsonStr)
     const items = parsed.items || []
-    const doc = parsed.doc || {}
+    let doc = parsed.doc || {}
 
     for (const item of items) {
       item.quantity = toNumber(item.quantity)
@@ -24,6 +24,18 @@ export async function POST(request: NextRequest) {
       item.priceWithTax = toNumber(item.priceWithTax)
       item.amountWithoutTax = toNumber(item.amountWithoutTax)
       item.amountWithTax = toNumber(item.amountWithTax)
+    }
+
+    // 兜底：如果LLM提取的doc字段为空，从原始OCR文本中直接提取
+    if (ocrText) {
+      const rawDoc = extractDocFromRawText(ocrText, doc)
+      // 仅当LLM取不到时用OCR兜底结果覆盖
+      const fields = ['customerName', 'projectName', 'title', 'editorName', 'contactName', 'contactPhone', 'validityPeriod']
+      for (const field of fields) {
+        if ((!doc[field] || !doc[field].trim()) && rawDoc[field] && rawDoc[field].trim()) {
+          doc[field] = rawDoc[field]
+        }
+      }
     }
 
     const auditResult = auditQuote(items, doc, ocrText || '')

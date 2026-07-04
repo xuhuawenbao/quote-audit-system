@@ -93,6 +93,34 @@ export default function UploadPage() {
     setError('')
   }
 
+  const renderErrorItem = (err: any, i: number) => {
+    const isMajor = err.severity === 'major'
+    return (
+      <div
+        key={i}
+        className={`border-l-4 p-3 rounded ${
+          isMajor
+            ? 'bg-red-50 border-red-500 text-red-700'
+            : 'bg-yellow-50 border-yellow-400 text-yellow-800'
+        }`}
+      >
+        <p className="text-sm font-medium">{err.message}</p>
+        {err.code && (
+          <p className={`text-xs mt-1 ${isMajor ? 'text-red-400' : 'text-yellow-600'}`}>
+            代码：{err.code}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  const auditResult = result?.auditResult
+  const docErrors = auditResult?.documentLevel?.errors || []
+  const lineErrors = auditResult?.lineItems?.errors || []
+  const majorCount = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'major').length
+  const minorCount = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'minor').length
+  const hasMajor = majorCount > 0
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-lg mx-auto">
@@ -105,7 +133,7 @@ export default function UploadPage() {
         {result?.debug && (
           <div className="mt-4 bg-gray-50 p-3 rounded-lg text-xs text-gray-500">
             <p>调试: 文件大小 {result.debug.fileSize} bytes | 类型: {result.debug.fileType}</p>
-            <p className="mt-1">OCR识别预览: {result.debug.extractedDataPreview || '(空)'}</p>
+            <p className="mt-1">识别预览: {result.debug.extractedDataPreview || '(空)'}</p>
           </div>
         )}
 
@@ -150,7 +178,7 @@ export default function UploadPage() {
                 id="file-input"
                 type="file"
                 className="hidden"
-                accept=".xlsx,.xls,.pdf,.png,.jpg,.jpeg"
+                accept=".xlsx,.xls,.png,.jpg,.jpeg"
                 onChange={handleFileChange}
               />
               <div className="flex flex-col items-center">
@@ -163,7 +191,7 @@ export default function UploadPage() {
                 ) : (
                   <>
                     <p className="mt-3 font-medium text-gray-700">点击或拖拽上传报价单</p>
-                    <p className="mt-1 text-sm text-gray-500">支持 Excel、PDF、图片格式</p>
+                    <p className="mt-1 text-sm text-gray-500">支持 Excel、图片格式（推荐Excel）</p>
                   </>
                 )}
               </div>
@@ -197,7 +225,7 @@ export default function UploadPage() {
           /* 审核结果展示 */
           <div className="bg-white rounded-2xl shadow-xl p-6 animate-fade-in">
             <div className="text-center mb-6">
-              {result.auditResult.status === 'passed' ? (
+              {!hasMajor && auditResult?.status === 'passed' ? (
                 <div className="inline-flex items-center gap-2 bg-green-100 text-success px-4 py-2 rounded-full">
                   <CheckCircle className="w-6 h-6" />
                   <span className="font-bold text-lg">审核通过</span>
@@ -208,33 +236,80 @@ export default function UploadPage() {
                   <span className="font-bold text-lg">审核未通过</span>
                 </div>
               )}
-              <p className="mt-2 text-gray-600">{result.auditResult.summary}</p>
+              <p className="mt-2 text-gray-600">{auditResult?.summary}</p>
+              {(majorCount > 0 || minorCount > 0) && (
+                <div className="flex justify-center gap-4 mt-3">
+                  {majorCount > 0 && (
+                    <span className="text-sm text-red-600 font-medium">
+                      {majorCount} 个重大错误
+                    </span>
+                  )}
+                  {minorCount > 0 && (
+                    <span className="text-sm text-yellow-600 font-medium">
+                      {minorCount} 个轻微提醒
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 文档级问题 */}
-            {result.auditResult.documentLevel?.errors?.length > 0 && (
+            {docErrors.length > 0 && (
               <div className="mb-4">
                 <h3 className="font-semibold text-gray-800 mb-2">📄 文档级问题</h3>
                 <div className="space-y-2">
-                  {result.auditResult.documentLevel.errors.map((err: any, i: number) => (
-                    <div key={i} className="bg-red-50 border-l-4 border-danger p-3 rounded">
-                      <p className="text-danger text-sm">{err.message}</p>
-                    </div>
-                  ))}
+                  {docErrors.map(renderErrorItem)}
                 </div>
               </div>
             )}
 
             {/* 行级问题 */}
-            {result.auditResult.lineItems?.errors?.length > 0 && (
+            {lineErrors.length > 0 && (
               <div className="mb-4">
                 <h3 className="font-semibold text-gray-800 mb-2">📋 明细行问题</h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {result.auditResult.lineItems.errors.map((err: any, i: number) => (
-                    <div key={i} className="bg-red-50 border-l-4 border-danger p-3 rounded">
-                      <p className="text-danger text-sm">{err.message}</p>
-                    </div>
-                  ))}
+                  {lineErrors.map(renderErrorItem)}
+                </div>
+              </div>
+            )}
+
+            {/* 价格提醒 */}
+            {auditResult?.priceCheck?.items && auditResult.priceCheck.items.length > 0 && (
+              <div className="mb-4">
+                <h3 className="font-semibold text-gray-800 mb-2">💰 价格参考</h3>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {auditResult.priceCheck.items
+                    .filter((item: any) => item.status !== 'matched')
+                    .map((item: any, i: number) => (
+                      <div
+                        key={i}
+                        className={`border-l-4 p-3 rounded text-sm ${
+                          item.status === 'deviation'
+                            ? 'bg-yellow-50 border-yellow-400 text-yellow-800'
+                            : 'bg-blue-50 border-blue-400 text-blue-800'
+                        }`}
+                      >
+                        <p className="font-medium">
+                          第{item.rowIndex}行：{item.name}
+                          {item.status === 'deviation' ? (
+                            <span>
+                              {' '}报价 {item.quotedPrice.toFixed(2)} 元，参考价 {item.referencePrice.toFixed(2)} 元
+                              ，{item.deviationPercent > 0 ? '偏高' : '偏低'} {Math.abs(item.deviationPercent)}%
+                            </span>
+                          ) : (
+                            <span> 未找到指导价</span>
+                          )}
+                        </p>
+                        <a
+                          href={item.searchUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs underline mt-1 inline-block"
+                        >
+                          京东搜索参考 →
+                        </a>
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
@@ -259,7 +334,7 @@ export default function UploadPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-6">
-          报价单AI审核系统 v1.0 · 数据安全存储
+          报价单AI审核系统 v2.0 · 数据安全存储
         </p>
       </div>
     </main>

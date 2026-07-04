@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Shield, LogOut, FileSpreadsheet, FileImage, FileText, CheckCircle, AlertCircle, Calendar, User } from 'lucide-react'
+import { Shield, LogOut, FileSpreadsheet, FileImage, CheckCircle, AlertCircle, Calendar, User } from 'lucide-react'
 
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -54,15 +54,22 @@ export default function AdminPage() {
 
   const getFileIcon = (type: string) => {
     if (type === 'excel') return <FileSpreadsheet className="w-5 h-5 text-success" />
-    if (type === 'pdf') return <FileText className="w-5 h-5 text-danger" />
     return <FileImage className="w-5 h-5 text-warning" />
   }
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, majorCount: number) => {
     if (status === 'passed') {
       return <span className="inline-flex items-center gap-1 bg-green-100 text-success px-2 py-1 rounded-full text-xs"><CheckCircle className="w-3 h-3" />通过</span>
     }
-    return <span className="inline-flex items-center gap-1 bg-red-100 text-danger px-2 py-1 rounded-full text-xs"><AlertCircle className="w-3 h-3" />未通过</span>
+    return <span className="inline-flex items-center gap-1 bg-red-100 text-danger px-2 py-1 rounded-full text-xs"><AlertCircle className="w-3 h-3" />{majorCount > 0 ? '退回' : '提醒'}</span>
+  }
+
+  const countErrors = (record: any) => {
+    const docErrors = record.audit_result?.documentLevel?.errors || []
+    const lineErrors = record.audit_result?.lineItems?.errors || []
+    const major = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'major').length
+    const minor = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'minor').length
+    return { major, minor, total: major + minor }
   }
 
   if (!authenticated) {
@@ -137,9 +144,12 @@ export default function AdminPage() {
             </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-4">
-            <p className="text-sm text-gray-500">审核未通过</p>
+            <p className="text-sm text-gray-500">需退回</p>
             <p className="text-2xl font-bold text-danger">
-              {records.filter(r => r.audit_result?.status === 'failed').length}
+              {records.filter(r => {
+                const errs = [...(r.audit_result?.documentLevel?.errors || []), ...(r.audit_result?.lineItems?.errors || [])]
+                return errs.some((e: any) => e.severity === 'major')
+              }).length}
             </p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-4">
@@ -173,39 +183,49 @@ export default function AdminPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">项目</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">文件</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">问题数</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">问题</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {records.map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {new Date(record.created_at).toLocaleString('zh-CN')}
-                      </td>
-                      <td className="px-4 py-3 text-sm font-medium">{record.submitter_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{record.project_name}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {getFileIcon(record.file_type)}
-                          <span className="text-sm text-gray-600 truncate max-w-[120px]">{record.file_name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">{getStatusBadge(record.audit_result?.status)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {(record.audit_result?.documentLevel?.errors?.length || 0) +
-                          (record.audit_result?.lineItems?.errors?.length || 0)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => setSelectedRecord(record)}
-                          className="text-sm text-accent hover:underline"
-                        >
-                          查看
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {records.map((record) => {
+                    const errCounts = countErrors(record)
+                    return (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {new Date(record.created_at).toLocaleString('zh-CN')}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium">{record.submitter_name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{record.project_name}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {getFileIcon(record.file_type)}
+                            <span className="text-sm text-gray-600 truncate max-w-[120px]">{record.file_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">{getStatusBadge(record.audit_result?.status, errCounts.major)}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {errCounts.total > 0 ? (
+                            <span>
+                              {errCounts.major > 0 && <span className="text-red-500">{errCounts.major}重大</span>}
+                              {errCounts.major > 0 && errCounts.minor > 0 && <span className="text-gray-400 mx-1">/</span>}
+                              {errCounts.minor > 0 && <span className="text-yellow-600">{errCounts.minor}轻微</span>}
+                            </span>
+                          ) : (
+                            <span className="text-green-600">无问题</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setSelectedRecord(record)}
+                            className="text-sm text-accent hover:underline"
+                          >
+                            查看
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -242,9 +262,13 @@ export default function AdminPage() {
                 {selectedRecord.audit_result?.documentLevel?.errors?.length > 0 && (
                   <div>
                     <p className="font-medium text-sm mb-2">文档级问题：</p>
-                    {selectedRecord.audit_result.documentLevel.errors.map((err: any, i: number) => (
-                      <p key={i} className="text-sm text-danger">• {err.message}</p>
-                    ))}
+                    <div className="space-y-1">
+                      {selectedRecord.audit_result.documentLevel.errors.map((err: any, i: number) => (
+                        <p key={i} className={`text-sm ${err.severity === 'major' ? 'text-red-600' : 'text-yellow-700'}`}>
+                          • [{err.code}] {err.message}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {selectedRecord.audit_result?.lineItems?.errors?.length > 0 && (
@@ -252,20 +276,12 @@ export default function AdminPage() {
                     <p className="font-medium text-sm mb-2">明细行问题：</p>
                     <div className="max-h-40 overflow-y-auto space-y-1">
                       {selectedRecord.audit_result.lineItems.errors.map((err: any, i: number) => (
-                        <p key={i} className="text-sm text-danger">• {err.message}</p>
+                        <p key={i} className={`text-sm ${err.severity === 'major' ? 'text-red-600' : 'text-yellow-700'}`}>
+                          • [{err.code}] {err.message}
+                        </p>
                       ))}
                     </div>
                   </div>
-                )}
-                {selectedRecord.file_url && (
-                  <a
-                    href={selectedRecord.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block text-sm text-accent hover:underline"
-                  >
-                    下载原始文件
-                  </a>
                 )}
               </div>
             </div>

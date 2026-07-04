@@ -51,6 +51,48 @@ export default function ResultPage() {
 
   const auditResult = record.audit_result
   const passed = auditResult?.status === 'passed'
+  const docLevel = auditResult?.documentLevel || {}
+  const docErrors = docLevel.errors || []
+  const lineErrors = auditResult?.lineItems?.errors || []
+  const majorCount = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'major').length
+  const minorCount = [...docErrors, ...lineErrors].filter((e: any) => e.severity === 'minor').length
+
+  const renderCheckItem = (label: string, valid: boolean) => (
+    <div className="flex items-center justify-between py-2">
+      <span className="text-sm">{label}</span>
+      {valid ? (
+        <span className="text-green-600 text-sm font-medium">✓ 已填写</span>
+      ) : (
+        <span className="text-red-500 text-sm font-medium">✗ 未填写</span>
+      )}
+    </div>
+  )
+
+  const renderErrorItem = (err: any, i: number) => {
+    const isMajor = err.severity === 'major'
+    return (
+      <div
+        key={i}
+        className={`border-l-4 p-3 rounded text-sm ${
+          isMajor
+            ? 'bg-red-50 border-red-500 text-red-700'
+            : 'bg-yellow-50 border-yellow-400 text-yellow-800'
+        }`}
+      >
+        <p className="font-medium">{err.message}</p>
+        {err.code && (
+          <p className={`text-xs mt-1 ${isMajor ? 'text-red-400' : 'text-yellow-600'}`}>
+            代码：{err.code}
+          </p>
+        )}
+        {err.expected && err.actual && (
+          <p className="text-xs mt-1">
+            期望值：{err.expected} | 实际值：{err.actual}
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
@@ -74,6 +116,16 @@ export default function ResultPage() {
               {passed ? '审核通过' : '审核未通过'}
             </h1>
             <p className="mt-2 text-gray-600">{auditResult?.summary}</p>
+            {(majorCount > 0 || minorCount > 0) && (
+              <div className="flex justify-center gap-4 mt-3">
+                {majorCount > 0 && (
+                  <span className="text-sm text-red-600 font-medium">{majorCount} 个重大错误</span>
+                )}
+                {minorCount > 0 && (
+                  <span className="text-sm text-yellow-600 font-medium">{minorCount} 个轻微提醒</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 基本信息 */}
@@ -108,60 +160,83 @@ export default function ResultPage() {
           {/* 文档级审核详情 */}
           <div className="p-6 border-b">
             <h2 className="font-semibold text-gray-800 mb-4">📄 文档级审核</h2>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm">报价单标题</span>
-                {auditResult?.documentLevel?.titleValid ? (
-                  <span className="text-success text-sm font-medium">✓ 有效</span>
-                ) : (
-                  <span className="text-danger text-sm font-medium">✗ 无效</span>
-                )}
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm">报价有效期</span>
-                {auditResult?.documentLevel?.validityPeriodValid ? (
-                  <span className="text-success text-sm font-medium">✓ 已填写</span>
-                ) : (
-                  <span className="text-danger text-sm font-medium">✗ 未填写</span>
-                )}
-              </div>
+            <div className="space-y-1">
+              {renderCheckItem('客户名称', docLevel.customerNameValid)}
+              {renderCheckItem('项目名称', docLevel.projectNameValid)}
+              {renderCheckItem('报价有效期', docLevel.validityPeriodValid)}
+              {renderCheckItem('编制人', docLevel.editorNameValid)}
+              {renderCheckItem('联系人/电话', docLevel.contactValid)}
+              {renderCheckItem('占位符已替换', docLevel.placeholderReplaced)}
             </div>
-            {auditResult?.documentLevel?.errors?.length > 0 && (
+            {docErrors.length > 0 && (
               <div className="mt-3 space-y-2">
-                {auditResult.documentLevel.errors.map((err: any, i: number) => (
-                  <div key={i} className="bg-red-50 border-l-4 border-danger p-3 rounded text-sm text-danger">
-                    {err.message}
-                  </div>
-                ))}
+                {docErrors.map(renderErrorItem)}
               </div>
             )}
           </div>
 
           {/* 行级审核详情 */}
-          <div className="p-6">
+          <div className="p-6 border-b">
             <h2 className="font-semibold text-gray-800 mb-4">
-              📋 明细行审核 
+              📋 明细行审核
               <span className="text-sm font-normal text-gray-500 ml-2">
                 共 {auditResult?.lineItems?.totalLines || 0} 行
               </span>
             </h2>
-            {auditResult?.lineItems?.errors?.length > 0 ? (
+            {lineErrors.length > 0 ? (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {auditResult.lineItems.errors.map((err: any, i: number) => (
-                  <div key={i} className="bg-red-50 border-l-4 border-danger p-3 rounded">
-                    <p className="text-sm text-danger">{err.message}</p>
-                    <p className="text-xs text-gray-500 mt-1">错误代码：{err.code}</p>
-                  </div>
-                ))}
+                {lineErrors.map(renderErrorItem)}
               </div>
             ) : (
               <p className="text-success text-sm">所有明细行数据完整，计算正确</p>
             )}
           </div>
+
+          {/* 价格参考 */}
+          {auditResult?.priceCheck?.items && auditResult.priceCheck.items.length > 0 && (
+            <div className="p-6">
+              <h2 className="font-semibold text-gray-800 mb-4">💰 价格参考</h2>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {auditResult.priceCheck.items
+                  .filter((item: any) => item.status !== 'matched')
+                  .map((item: any, i: number) => (
+                    <div
+                      key={i}
+                      className={`border-l-4 p-3 rounded text-sm ${
+                        item.status === 'deviation'
+                          ? 'bg-yellow-50 border-yellow-400 text-yellow-800'
+                          : 'bg-blue-50 border-blue-400 text-blue-800'
+                      }`}
+                    >
+                      <p className="font-medium">
+                        第{item.rowIndex}行：{item.name}
+                        {item.brand && `（${item.brand}）`}
+                        {item.status === 'deviation' ? (
+                          <span>
+                            {' '}报价 {item.quotedPrice.toFixed(2)} 元，参考价 {item.referencePrice.toFixed(2)} 元
+                            ，{item.deviationPercent > 0 ? '偏高' : '偏低'} {Math.abs(item.deviationPercent)}%
+                          </span>
+                        ) : (
+                          <span> 未找到指导价</span>
+                        )}
+                      </p>
+                      <a
+                        href={item.searchUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs underline mt-1 inline-block"
+                      >
+                        京东搜索参考 →
+                      </a>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          报价单AI审核系统 v1.0 · 记录ID: {record.id}
+          报价单AI审核系统 v2.0 · 记录ID: {record.id}
         </p>
       </div>
     </main>

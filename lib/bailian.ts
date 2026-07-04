@@ -1,6 +1,7 @@
 /**
  * 阿里云百炼 API 封装（OpenAI兼容模式）
- * 与WorkBuddy中的调用方式保持一致
+ * OCR: qwen-vl-ocr（准确率更高的专用OCR模型）
+ * 结构化: qwen-plus（只做文本→JSON转换，不做规则判断）
  */
 
 const API_KEY = process.env.BAILIAN_API_KEY!
@@ -11,7 +12,7 @@ interface ChatMessage {
   content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
 }
 
-async function callChat(model: string, messages: ChatMessage[], temperature = 0.1) {
+async function callChat(model: string, messages: ChatMessage[], temperature = 0.05, maxTokens = 4096) {
   const resp = await fetch(`${BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -22,6 +23,7 @@ async function callChat(model: string, messages: ChatMessage[], temperature = 0.
       model,
       messages,
       temperature,
+      max_tokens: maxTokens,
     }),
   })
 
@@ -35,79 +37,89 @@ async function callChat(model: string, messages: ChatMessage[], temperature = 0.
 }
 
 /**
- * 用Qwen-VL识别图片/PDF中的表格数据
- * 传入图片的base64 data URI
+ * 用 qwen-vl-ocr 识别图片中的报价单内容
+ * 传入图片的 base64 data URI
+ * 返回识别到的原始文本
  */
 export async function ocrWithVL(imageDataUri: string): Promise<string> {
   const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: '你是一个专业的文档表格识别助手。请识别图片中的报价单表格，只输出JSON数据，不要任何解释。'
+      content: '你是一个专业的文档OCR识别助手。请准确识别图片中的文字和表格内容，保持原有格式输出。'
     },
     {
       role: 'user',
       content: [
-        { 
-          type: 'text', 
-          text: '请识别这张报价单图片中的所有表格数据，以JSON格式输出。要求：1）每个单元格都要识别 2）税率如果是百分比（如13%）转为小数0.13 3）输出格式：{"items":[{"序号":"","商品名称":"","规格型号":"","品牌":"","单位":"","数量":"","不含税单价":"","税率":"","含税单价":"","含税金额":""}]} 4）只输出JSON，不要任何解释文字。'
+        {
+          type: 'text',
+          text: '请识别这张报价单图片中的所有文字内容，包括表头、表尾信息、表格数据。要求：1）保留表格的行列结构 2）识别所有数字（尤其是单价、数量、金额）3）识别客户名称、项目名称、有效期、编制人等文档信息 4）直接输出识别到的文本，不要添加任何解释。'
         },
-        { 
-          type: 'image_url', 
+        {
+          type: 'image_url',
           image_url: { url: imageDataUri }
         },
       ],
     },
   ]
 
-  const result = await callChat('qwen-vl-plus', messages, 0.1)
-  return extractJsonFromText(result)
+  const result = await callChat('qwen-vl-ocr', messages, 0.05, 4096)
+  return result
 }
 
 /**
- * 用qwen-plus按规则审核报价单数据
+ * 用 qwen-plus 将OCR文本整理为结构化JSON
+ * 输出格式和 parseExcelData 完全一致：{ items: QuoteItem[], doc: DocumentInfo }
  */
-export async function auditWithLLM(extractedData: string, fileType: string): Promise<string> {
-  const systemPrompt = `你是一位严格的核价工程师，请按以下规则审核报价单数据：
-
-【文档级必填项】
-1. 报价单标题不能为"***"或空
-2. 报价有效期必须填写
-3. 需识别报价人姓名
-
-【明细行级必填项 - 每条商品行】
-4. 序号、商品名称、规格型号、品牌、单位、数量、不含税单价、税率、含税单价、含税金额 - 全部必须填写
-5. 品牌字段必须独立填写，不能将规格型号中的文字误识别为品牌
-
-【计算校验规则】
-6. 含税单价 = 不含税单价 × (1 + 税率)，保留两位小数
-7. 含税金额 = 含税单价 × 数量
-8. 如果税率缺失，但含税单价和不含税单价都有，自动反推税率
+export async function extractStructuredData(ocrText: string): Promise<string> {
+  const systemPrompt = `你是一位数据提取专家。请将OCR识别到的报价单文本，整理成标准的JSON格式。
 
 【输出格式要求】
-请以JSON格式输出审核结果：
+必须输出以下格式的JSON，不要任何解释文字：
 {
-  "status": "passed" 或 "failed",
-  "documentLevel": {
-    "titleValid": true/false,
-    "validityPeriodValid": true/false,
-    "errors": [{"code":"E001","message":"..."}]
+  "doc": {
+    "customerName": "客户名称",
+    "projectName": "项目名称",
+    "validityPeriod": "报价有效期",
+    "editorName": "编制人",
+    "contactName": "联系人",
+    "contactPhone": "联系电话"
   },
-  "lineItems": {
-    "totalLines": 数字,
-    "validLines": 数字,
-    "errors": [{"code":"E002","rowIndex":1,"field":"税率","message":"..."}]
-  },
-  "summary": "审核通过" 或 "发现X个问题，请修正"
+  "items": [
+    {
+      "rowIndex": 1,
+      "serialNo": "序号",
+      "name": "商品名称",
+      "spec": "规格型号",
+      "brand": "品牌",
+      "unit": "单位",
+      "quantity": 数量,
+      "priceWithoutTax": 不含税单价,
+      "taxRate": 税率（小数，如0.13）,
+      "priceWithTax": 含税单价,
+      "amountWithoutTax": 不含税金额,
+      "amountWithTax": 含税金额,
+      "isTotalRow": false
+    }
+  ]
 }
 
-注意：空行（核心字段全部为空）应跳过，不报错。`
+【字段说明】
+- doc中的字段：如果在文本中找不到，留空字符串""
+- items中的字段：每一行商品对应一个对象
+- rowIndex: 从1开始递增
+- 税率：如果是13%则输出0.13，如果是9%则输出0.09
+- isTotalRow: 如果这一行是合计行（名称包含"合计"），设为true
+- 数量、单价、金额等必须是数字，如果识别不到填null
+- 不要编造数据，找不到就留空或null
+- 只输出JSON，不要markdown代码块，不要解释文字`
 
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `请审核以下从${fileType}文件中提取的报价单数据：\n\n${extractedData}` },
+    { role: 'user', content: `请将以下OCR识别结果整理成JSON格式：\n\n${ocrText}` },
   ]
 
-  return await callChat('qwen-plus', messages, 0.1)
+  const result = await callChat('qwen-plus', messages, 0.05, 4096)
+  return extractJsonFromText(result)
 }
 
 /**
@@ -115,21 +127,21 @@ export async function auditWithLLM(extractedData: string, fileType: string): Pro
  */
 export function extractJsonFromText(text: string): string {
   if (typeof text !== 'string' || !text) return '{}'
-  
+
   // 尝试从markdown代码块中提取
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const codeBlockMatch = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/)
   if (codeBlockMatch) {
     const jsonStr = codeBlockMatch[1].trim()
     if (jsonStr.startsWith('{') || jsonStr.startsWith('[')) {
       return jsonStr
     }
   }
-  
+
   // 尝试直接匹配JSON对象/数组
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     return jsonMatch[0]
   }
-  
+
   return '{}'
 }

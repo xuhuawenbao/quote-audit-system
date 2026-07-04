@@ -9,13 +9,19 @@ export interface QuoteItem {
   priceWithoutTax?: number
   taxRate?: number
   priceWithTax?: number
+  amountWithoutTax?: number
   amountWithTax?: number
+  isTotalRow?: boolean
 }
 
-export interface DocumentCheck {
-  title?: string
+export interface DocumentInfo {
+  customerName?: string
+  projectName?: string
   validityPeriod?: string
-  quoterName?: string
+  editorName?: string
+  contactName?: string
+  contactPhone?: string
+  title?: string
 }
 
 export interface AuditError {
@@ -23,21 +29,43 @@ export interface AuditError {
   rowIndex?: number
   field?: string
   message: string
-  severity: 'error' | 'warning'
+  severity: 'major' | 'minor'
+  expected?: string
+  actual?: string
+}
+
+export interface PriceDeviation {
+  rowIndex: number
+  name: string
+  spec: string
+  brand: string
+  quotedPrice: number
+  referencePrice?: number
+  deviationPercent?: number
+  searchUrl: string
+  status: 'matched' | 'unmatched' | 'deviation'
 }
 
 export interface AuditResult {
   id: string
   status: 'passed' | 'failed'
   documentLevel: {
-    titleValid: boolean
+    customerNameValid: boolean
+    projectNameValid: boolean
     validityPeriodValid: boolean
+    editorNameValid: boolean
+    contactValid: boolean
+    placeholderReplaced: boolean
     errors: AuditError[]
   }
   lineItems: {
     totalLines: number
     validLines: number
     errors: AuditError[]
+  }
+  priceCheck?: {
+    checked: boolean
+    items: PriceDeviation[]
   }
   summary: string
   createdAt: string
@@ -52,4 +80,15 @@ export interface QuoteRecord {
   fileType: 'excel' | 'pdf' | 'image'
   auditResult: AuditResult
   createdAt: string
+}
+
+export interface PriceReference {
+  id?: string
+  category: string
+  name: string
+  spec: string
+  brand: string
+  unit: string
+  price: number
+  source: string
 }

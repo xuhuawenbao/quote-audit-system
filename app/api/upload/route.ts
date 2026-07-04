@@ -100,7 +100,8 @@ export async function POST(request: NextRequest) {
           item.amountWithTax = toNumber(item.amountWithTax)
         }
 
-        auditResult = auditQuote(items, doc)
+        // 传入原始OCR文本，用于检测LLM可能漏掉的占位符
+        auditResult = auditQuote(items, doc, ocrText)
 
         // 价格比对
         try {

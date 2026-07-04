@@ -52,7 +52,12 @@ export async function ocrWithVL(imageDataUri: string): Promise<string> {
       content: [
         {
           type: 'text',
-          text: '请识别这张报价单图片中的所有文字内容，包括表头、表尾信息、表格数据。要求：1）保留表格的行列结构 2）识别所有数字（尤其是单价、数量、金额）3）识别客户名称、项目名称、有效期、编制人等文档信息 4）直接输出识别到的文本，不要添加任何解释。'
+          text: `请识别这张报价单图片中的所有文字内容，包括表头、表尾信息、表格数据。要求：
+1）保留表格的行列结构
+2）识别所有数字（尤其是单价、数量、金额）
+3）识别文档信息：报价单标题（注意是否有***、xxx、某某等占位符）、客户名称、项目名称、报价有效期（如"有效期30天""有效期至2026年8月1日"等）、编制人、联系人、联系电话
+4）特别注意：有效期和报价日期是两个不同的字段，都要识别
+5）直接输出识别到的文本，不要添加任何解释。`
         },
         {
           type: 'image_url',
@@ -77,9 +82,10 @@ export async function extractStructuredData(ocrText: string): Promise<string> {
 必须输出以下格式的JSON，不要任何解释文字：
 {
   "doc": {
+    "title": "报价单标题（如'***报价单'，注意保留***等占位符）",
     "customerName": "客户名称",
     "projectName": "项目名称",
-    "validityPeriod": "报价有效期",
+    "validityPeriod": "报价有效期（如'30天'，不要和报价日期混淆）",
     "editorName": "编制人",
     "contactName": "联系人",
     "contactPhone": "联系电话"
@@ -104,6 +110,8 @@ export async function extractStructuredData(ocrText: string): Promise<string> {
 }
 
 【字段说明】
+- title: 报价单顶部的标题文字，如果有***、xxx、某某等占位符，必须原样保留
+- validityPeriod: 只提取"有效期"相关内容，如"30天""有效期至2026-08-01"，不要填报价日期
 - doc中的字段：如果在文本中找不到，留空字符串""
 - items中的字段：每一行商品对应一个对象
 - rowIndex: 从1开始递增

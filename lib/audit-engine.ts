@@ -28,7 +28,7 @@ const TOTAL_KEYWORDS = ['合计', '总计', '小计', 'SUM']
 
 // ========== 主审核函数 ==========
 
-export function auditQuote(items: QuoteItem[], doc: DocumentInfo): AuditResult {
+export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: string): AuditResult {
   const docErrors: AuditError[] = []
   const lineErrors: AuditError[] = []
 
@@ -55,11 +55,13 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo): AuditResult {
   }
 
   // DOC003: 占位符未替换（重大）
+  // 同时检查结构化字段和原始OCR文本，防止LLM漏提取
   const allDocText = [
     doc.customerName, doc.projectName, doc.title,
     doc.editorName, doc.contactName, doc.contactPhone, doc.validityPeriod
   ].filter(Boolean).join(' ')
-  if (PLACEHOLDERS.some(p => allDocText.includes(p))) {
+  const fullText = rawText ? `${allDocText} ${rawText}` : allDocText
+  if (PLACEHOLDERS.some(p => fullText.includes(p))) {
     docErrors.push({
       code: 'DOC003',
       message: '报价单中存在占位符（***、xxx、某某等）未替换，请填写真实信息',

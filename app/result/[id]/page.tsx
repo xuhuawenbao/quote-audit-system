@@ -195,7 +195,7 @@ export default function ResultPage() {
           {/* 价格参考 */}
           {auditResult?.priceCheck?.items && auditResult.priceCheck.items.length > 0 && (
             <div className="p-6">
-              <h2 className="font-semibold text-gray-800 mb-4">💰 价格参考</h2>
+              <h2 className="font-semibold text-gray-800 mb-4">💰 价格参考（仅提醒，不退回）</h2>
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {auditResult.priceCheck.items
                   .filter((item: any) => item.status !== 'matched')
@@ -213,11 +213,11 @@ export default function ResultPage() {
                         {item.brand && `（${item.brand}）`}
                         {item.status === 'deviation' ? (
                           <span>
-                            {' '}报价 {item.quotedPrice.toFixed(2)} 元，参考价 {item.referencePrice.toFixed(2)} 元
-                            ，{item.deviationPercent > 0 ? '偏高' : '偏低'} {Math.abs(item.deviationPercent)}%
+                            {' '}报价 {item.quotedPrice.toFixed(2)} 元/件，内部参考价 {item.referencePrice.toFixed(2)} 元/件
+                            ，{item.deviationPercent > 0 ? '偏高' : '偏低'} {Math.abs(item.deviationPercent)}%，请核实
                           </span>
                         ) : (
-                          <span> 未找到指导价</span>
+                          <span> 未在内部指导价表中找到匹配，请通过下方链接查询市场价进行比对</span>
                         )}
                       </p>
                       <a
@@ -226,7 +226,7 @@ export default function ResultPage() {
                         rel="noopener noreferrer"
                         className="text-xs underline mt-1 inline-block"
                       >
-                        京东搜索参考 →
+                        点击查询京东/天猫参考价 →
                       </a>
                     </div>
                   ))}

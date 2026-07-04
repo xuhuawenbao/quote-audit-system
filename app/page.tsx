@@ -58,20 +58,44 @@ export default function UploadPage() {
     setResult(null)
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('submitterName', submitterName)
-      formData.append('projectName', projectName)
+      const ext = file.name.split('.').pop()?.toLowerCase()
 
-      const resp = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
+      if (ext === 'xlsx' || ext === 'xls') {
+        // Excel: 直接上传（代码引擎，秒出结果）
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('submitterName', submitterName)
+        formData.append('projectName', projectName)
 
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.error || '上传失败')
+        const resp = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || '上传失败')
+        setResult(data)
 
-      setResult(data)
+      } else {
+        // 图片: 先转base64，再调用专用审核接口（支持60秒超时）
+        const fileBuffer = await file.arrayBuffer()
+        const base64 = Buffer.from(fileBuffer).toString('base64')
+        const mimeType = file.type || 'image/png'
+        const imageDataUri = `data:${mimeType};base64,${base64}`
+
+        const resp = await fetch('/api/audit-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageDataUri,
+            submitterName,
+            projectName,
+            fileName: file.name,
+          }),
+        })
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || '审核失败')
+        setResult(data)
+      }
     } catch (err: any) {
       setError(err.message || '处理失败，请重试')
     } finally {
@@ -214,7 +238,7 @@ export default function UploadPage() {
               {loading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  AI审核中，请稍候...
+                  AI审核中，图片识别需要15-30秒，请耐心等待...
                 </>
               ) : (
                 <>开始审核</>

@@ -76,13 +76,13 @@ export default function UploadPage() {
         setResult(data)
 
       } else {
-        // 图片: 3步串联，每步独立API，避免Vercel 10秒超时
+        // 图片: 2步串联，每步独立API，避免Vercel 10秒超时
         const fileBuffer = await file.arrayBuffer()
         const base64 = Buffer.from(fileBuffer).toString('base64')
         const mimeType = file.type || 'image/png'
         const imageDataUri = `data:${mimeType};base64,${base64}`
 
-        // Step 1: OCR识别（约5-8秒）
+        // Step 1: OCR + 结构化JSON（一步到位，约5-8秒）
         setLoading(true)
         const ocrResp = await fetch('/api/audit-image/ocr', {
           method: 'POST',
@@ -92,21 +92,12 @@ export default function UploadPage() {
         const ocrData = await ocrResp.json()
         if (!ocrResp.ok) throw new Error(ocrData.error || 'OCR识别失败')
 
-        // Step 2: 结构化提取（约3-5秒）
-        const extractResp = await fetch('/api/audit-image/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ocrText: ocrData.ocrText }),
-        })
-        const extractData = await extractResp.json()
-        if (!extractResp.ok) throw new Error(extractData.error || '数据提取失败')
-
-        // Step 3: 规则审核+保存（约1-2秒）
+        // Step 2: 规则审核+保存（约1-2秒）
         const finalResp = await fetch('/api/audit-image/finalize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            structuredJson: extractData.structuredJson,
+            structuredJson: ocrData.structuredJson,
             ocrText: ocrData.ocrText,
             submitterName,
             projectName,

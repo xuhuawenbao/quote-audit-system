@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ocrWithVL } from '@/lib/bailian'
+import { ocrToStructured } from '@/lib/bailian'
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,9 +8,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '缺少图片数据' }, { status: 400 })
     }
 
-    const ocrText = await ocrWithVL(imageDataUri)
+    // 一步到位：OCR + 结构化JSON
+    const { ocrText, structuredJson } = await ocrToStructured(imageDataUri)
 
-    return NextResponse.json({ success: true, ocrText })
+    return NextResponse.json({ success: true, ocrText, structuredJson })
   } catch (error: any) {
     console.error('[OCR] 失败:', error)
     return NextResponse.json(

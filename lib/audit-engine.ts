@@ -332,54 +332,113 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
   const items: QuoteItem[] = []
   const doc: DocumentInfo = {}
 
-  // 1. 识别文档级信息（通常在表头上方的行）
+  // 1. 识别文档级信息（逐格查找，不拼行）
   for (let i = 0; i < Math.min(10, rows.length); i++) {
     const row = rows[i]
     if (!row) continue
-    const rowText = row.map(c => String(c || '')).join(' ')
 
-    if (rowText.includes('报价')) {
-      doc.title = rowText.slice(0, 50)
-    }
-
-    // 提取客户名称：要求"客户/甲方/业主"后紧跟冒号/空格，后面至少2个中文字符
-    const customerMatch = rowText.match(/(?:客户|甲方|业主)(?:名称)?[：:]\s*([^\s]{2,20})/)
-    if (customerMatch && !doc.customerName) {
-      const val = customerMatch[1].trim()
-      // 过滤明显不是公司名称的匹配
-      if (val.length >= 2 && !PLACEHOLDERS.some(p => val.includes(p))) {
-        doc.customerName = val
+    // 找标题
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || '').trim()
+      if (!cell) continue
+      if (cell.includes('报价单') || cell.includes('报价表')) {
+        if (!doc.title) doc.title = cell.slice(0, 50).replace(/[\r\n]+/g, '')
       }
     }
 
-    // 项目名称
-    const projectMatch = rowText.match(/(?:项目|工程)(?:名称)?[：:]\s*([^\s]{2,30})/)
-    if (projectMatch && !doc.projectName) {
-      doc.projectName = projectMatch[1].trim()
-    }
+    // 找标签-值对：标签在某一列，值在右侧相邻列或同标签后冒号内
+    for (let c = 0; c < row.length - 1; c++) {
+      const cell = String(row[c] || '').trim()
+      if (!cell) continue
+      const nextCell = String(row[c + 1] || '').trim()
 
-    // 有效期
-    const validMatch = rowText.match(/(?:报价)?(?:有效[期内到]|截止日期)[：:]\s*(.+)/)
-    if (validMatch && !doc.validityPeriod) {
-      doc.validityPeriod = validMatch[1].trim()
-    }
+      // 客户名称：匹配"客户"或"甲方"或"业主"（去掉换行符）
+      const cellClean = cell.replace(/[\r\n]+/g, '')
+      if (/^(?:客户|甲方|业主)/.test(cellClean) && !doc.customerName) {
+        // 优先级1: 冒号后的文字（如"客户名称：离公司"在同一单元格）
+        const colonMatch = cellClean.match(/(?:客户|甲方|业主)(?:名称)?[：:]\s*(.{2,20})/)
+        if (colonMatch) {
+          const val = colonMatch[1].trim()
+          if (val.length >= 2 && !PLACEHOLDERS.some(p => val.includes(p))) {
+            doc.customerName = val
+            continue
+          }
+        }
+        // 优先级2: 右侧相邻单元格的值（如A1="客户名称", B1="离公司"）
+        if (nextCell && nextCell.length >= 2 && !PLACEHOLDERS.some(p => nextCell.includes(p))) {
+          doc.customerName = nextCell
+          continue
+        }
+        // 两侧都没值 → 留空，让DOC001报错
+      }
 
-    // 编制人
-    const editMatch = rowText.match(/(?:编制|报价|制表)人[：:]\s*([^\s]{1,8})/)
-    if (editMatch && !doc.editorName) {
-      doc.editorName = editMatch[1].trim()
-    }
+      // 项目名称
+      if (/^(?:项目|工程)/.test(cellClean) && !doc.projectName) {
+        const colonMatch = cellClean.match(/(?:项目|工程)(?:名称)?[：:]\s*(.{2,30})/)
+        if (colonMatch) {
+          doc.projectName = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell && nextCell.length >= 2) {
+          doc.projectName = nextCell
+          continue
+        }
+      }
 
-    // 联系人
-    const contactMatch = rowText.match(/联系人[：:]\s*([^\s]{1,8})/)
-    if (contactMatch && !doc.contactName) {
-      doc.contactName = contactMatch[1].trim()
-    }
+      // 有效期
+      if (/(?:报价)?有效[期内到]|截止日期/.test(cellClean) && !doc.validityPeriod) {
+        const colonMatch = cellClean.match(/(?:报价)?(?:有效[期内到]|截止日期)[：:]\s*(.{2,20})/)
+        if (colonMatch) {
+          doc.validityPeriod = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell) {
+          doc.validityPeriod = nextCell
+          continue
+        }
+      }
 
-    // 电话
-    const phoneMatch = rowText.match(/(?:电话|手机|Tel)[：:]\s*([\d\-]{7,15})/)
-    if (phoneMatch && !doc.contactPhone) {
-      doc.contactPhone = phoneMatch[1].trim()
+      // 编制人
+      if (/(?:编制|报价|制表)人/.test(cellClean) && !doc.editorName) {
+        const colonMatch = cellClean.match(/(?:编制|报价|制表)人[：:]\s*(.{1,8})/)
+        if (colonMatch) {
+          doc.editorName = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell) {
+          doc.editorName = nextCell
+          continue
+        }
+      }
+
+      // 联系人
+      if (/联系人/.test(cellClean) && !doc.contactName) {
+        const colonMatch = cellClean.match(/联系人[：:]\s*(.{1,8})/)
+        if (colonMatch) {
+          doc.contactName = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell) {
+          doc.contactName = nextCell
+          continue
+        }
+      }
+
+      // 电话
+      if (/(?:电话|手机|Tel)/.test(cellClean) && !doc.contactPhone) {
+        const colonMatch = cellClean.match(/(?:电话|手机|Tel)[：:]\s*([\d\-]{7,15})/)
+        if (colonMatch) {
+          doc.contactPhone = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell) {
+          const phoneVal = nextCell.replace(/[\s\-]/g, '')
+          if (/[\d]{7,15}/.test(phoneVal)) {
+            doc.contactPhone = nextCell
+            continue
+          }
+        }
+      }
     }
   }
 

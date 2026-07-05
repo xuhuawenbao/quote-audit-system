@@ -70,7 +70,14 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
   }
 
   // DOC004: 报价有效期缺失（轻微）
-  if (!doc.validityPeriod || doc.validityPeriod.trim() === '') {
+  // 检查：字段为空，或提取的值明显不对（不含"有效"和天/月单位），且原始文本中也找不到有效表达
+  const validityValue = (doc.validityPeriod || '').trim()
+  const validityLooksValid = validityValue.length > 0 &&
+    validityValue.includes('有效') &&
+    /[天日月周年]/.test(validityValue)
+  const hasValidityInRawText = rawText ? /有效[期内].{0,10}[\d一二三四五六七八九十]+\s*[天日月周年]/.test(rawText) : false
+
+  if (!validityLooksValid && !hasValidityInRawText) {
     docErrors.push({
       code: 'DOC004',
       field: 'validityPeriod',

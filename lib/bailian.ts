@@ -160,20 +160,22 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
     if (m) result.contactPhone = m[1].trim()
   }
 
-  // 有效期（扩大搜索范围）
+  // 有效期 - 严格匹配，必须有"有效"二字
   if (!result.validityPeriod || !result.validityPeriod.trim()) {
-    // 多模式搜索
-    const patterns = [
-      /(?:有效[期内]|报价[期内]|报价有效)[^，。\n]{1,20}/,
-      /有效[期内到]\s*[\d年月日天内]+\s*[天日月年]?/,
-      /报价[有效].{0,2}\s*[\d年月日天内]+\s*[天日月年]?/,
-    ]
-    for (const p of patterns) {
-      const m = text.match(p)
-      if (m) {
-        result.validityPeriod = m[0].trim()
-        break
-      }
+    // 完整句子匹配
+    const m = text.match(/(?:报价)?有效[期内到].{0,8}[\d一二三四五六七八九十]+\s*[天日月周年]/)
+    if (m) {
+      result.validityPeriod = m[0].trim().substring(0, 30)
+    }
+  }
+
+  // 兜底校验：如果提取出来的值不含"有效"或不是天/月表达，清空
+  if (result.validityPeriod && result.validityPeriod.trim()) {
+    const v = result.validityPeriod.trim()
+    const hasValid = v.includes('有效')
+    const hasTimeUnit = /[天日月周年]/.test(v)
+    if (!hasValid || !hasTimeUnit) {
+      result.validityPeriod = ''
     }
   }
 

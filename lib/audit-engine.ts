@@ -10,14 +10,14 @@ const COLUMN_KEYWORDS: Record<string, string[]> = {
   serialNo: ['序号', '编号', 'No', 'NO', '项次'],
   name: ['名称', '商品名称', '项目名称', '材料名称', '品名', '内容', '工程内容'],
   spec: ['规格型号', '规格', '型号'],
-  brand: ['品牌', '厂家', '厂商'],
+  brand: ['品牌', '厂家', '厂商', '产地', '生产厂家', '品牌/厂家', '品牌产地'],
   unit: ['单位', '计量单位'],
   quantity: ['数量', '工程量', 'Qty'],
-  priceWithoutTax: ['不含税单价', '未税单价'],
+  priceWithoutTax: ['不含税单价', '未税单价', '单价(不含税)'],
   taxRate: ['税率', '税点', '税额'],
-  priceWithTax: ['含税单价', '含税价'],
-  amountWithoutTax: ['不含税金额', '未税金额', '不含税合价'],
-  amountWithTax: ['含税金额', '合价', '含税合价', '含税总价'],
+  priceWithTax: ['含税单价', '含税价', '单价(含税)'],
+  amountWithoutTax: ['不含税金额', '未税金额', '不含税合价', '金额(不含税)'],
+  amountWithTax: ['含税金额', '合价', '含税合价', '含税总价', '金额(含税)'],
 }
 
 /** 占位符关键词 */
@@ -190,21 +190,21 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       })
     }
 
-    // ITEM007: 税率缺失（重大）—— 尝试自动反推
+    // ITEM007: 税率缺失（无论能否反推都要报错）
     let effectiveTaxRate = item.taxRate
     if (item.taxRate === undefined || item.taxRate === null || isNaN(item.taxRate)) {
+      // 尝试自动反推
       if (item.priceWithTax !== undefined && item.priceWithoutTax !== undefined &&
           !isNaN(item.priceWithTax) && !isNaN(item.priceWithoutTax) && item.priceWithoutTax !== 0) {
         effectiveTaxRate = item.priceWithTax / item.priceWithoutTax - 1
-      } else {
-        rowErrors.push({
-          code: 'ITEM007',
-          rowIndex: rowIdx,
-          field: 'taxRate',
-          message: `第${rowIdx}行：税率未填写，且无法通过含税单价和不含税单价反推`,
-          severity: 'major',
-        })
       }
+      rowErrors.push({
+        code: 'ITEM007',
+        rowIndex: rowIdx,
+        field: 'taxRate',
+        message: `第${rowIdx}行：税率未填写，建议补充确认`,
+        severity: 'minor',
+      })
     }
 
     // ===== 计算校验（仅限Excel场景，OCR图片跳过因为数字精度不够）=====
@@ -442,7 +442,9 @@ function isEmptyRow(item: QuoteItem): boolean {
 }
 
 function hasPrecisionError(expected: number, actual: number): boolean {
-  return Math.abs(expected - actual) >= PRECISION_TOLERANCE
+  // 先四舍五入到2位小数再比较，消除浮点运算误差
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  return Math.abs(round2(expected) - round2(actual)) >= PRECISION_TOLERANCE
 }
 
 function generateId(): string {

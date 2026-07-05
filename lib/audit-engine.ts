@@ -367,12 +367,21 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     const firstCell = String(row[0] || '').trim()
     const isTotalRow = TOTAL_KEYWORDS.some(k => firstCell.includes(k))
 
+    // 解析各列
+    const rawSpec = getCell(row, columnMap.spec)
+    let rawBrand = getCell(row, columnMap.brand)
+
+    // 品牌规格合并列（brand=-1）: spec列的值既是规格也是品牌
+    if (columnMap.brand === -1) {
+      rawBrand = rawSpec  // 同一列数据，品牌和规格相同
+    }
+
     const item: QuoteItem = {
       rowIndex: i - headerRowIndex,
       serialNo: getCell(row, columnMap.serialNo),
       name: getCell(row, columnMap.name),
-      spec: getCell(row, columnMap.spec),
-      brand: getCell(row, columnMap.brand),
+      spec: rawSpec,
+      brand: rawBrand,
       unit: getCell(row, columnMap.unit),
       quantity: parseNumeric(getCell(row, columnMap.quantity)),
       priceWithoutTax: parseNumeric(getCell(row, columnMap.priceWithoutTax)),
@@ -398,13 +407,24 @@ function findHeaderRow(rows: any[][]): { headerRowIndex: number; columnMap: Reco
 
     const columnMap: Record<string, number> = {}
     const matchedKeys = new Set<string>()
+    let hasMergedBrandSpec = false
 
     for (let col = 0; col < row.length; col++) {
       const cellText = String(row[col] || '').trim()
       if (!cellText) continue
 
+      // 清理换行符（表头可能有换行，如"税率\n(%)"）
+      const cleanText = cellText.replace(/[\r\n]+/g, '')
+
+      // 检测"品牌/规格型号"合并列
+      if (cleanText.includes('品牌/规格') || cleanText.includes('品牌/型号')) {
+        columnMap['spec'] = col
+        hasMergedBrandSpec = true
+        continue
+      }
+
       for (const [key, keywords] of Object.entries(COLUMN_KEYWORDS)) {
-        if (keywords.some(kw => cellText.includes(kw))) {
+        if (keywords.some(kw => cleanText.includes(kw))) {
           if (!columnMap[key]) {
             columnMap[key] = col
             matchedKeys.add(key)
@@ -413,9 +433,14 @@ function findHeaderRow(rows: any[][]): { headerRowIndex: number; columnMap: Reco
       }
     }
 
-    // 至少匹配到名称+规格+单位+数量+单价 中的3个核心列
+    // 如果有"品牌/规格"合并列，标记brand为-1（表示无独立品牌列，不报缺失）
+    if (hasMergedBrandSpec && !columnMap['brand']) {
+      columnMap['brand'] = -1  // 特殊标记：品牌与规格合并在一列
+    }
+
+    // 至少匹配到核心列中的3个
     const coreColumns = ['name', 'spec', 'unit', 'quantity', 'priceWithoutTax']
-    const matchedCore = coreColumns.filter(k => matchedKeys.has(k)).length
+    const matchedCore = coreColumns.filter(k => columnMap[k] !== undefined).length
     if (matchedCore >= 3) {
       return { headerRowIndex: i, columnMap }
     }

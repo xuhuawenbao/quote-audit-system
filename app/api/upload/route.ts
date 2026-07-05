@@ -31,9 +31,35 @@ export async function POST(request: NextRequest) {
 
     const workbook = XLSX.read(fileBuffer, { type: 'array' })
     const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][]
+    // raw:false 确保公式单元格返回计算值而非公式字符串
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
 
     const { items, doc } = parseExcelData(rows)
+
+    // 自动补全公式列：xlsx免费版不支持公式计算
+    // 如果含税相关列缺失，用已知值自动推算
+    for (const item of items) {
+      if (item.isTotalRow) continue
+      const qty = item.quantity
+      const priceNoTax = item.priceWithoutTax
+      const taxRate = item.taxRate
+
+      // 不含税金额 = 数量 × 不含税单价
+      if (qty !== undefined && priceNoTax !== undefined &&
+          (item.amountWithoutTax === undefined || isNaN(item.amountWithoutTax))) {
+        item.amountWithoutTax = Math.round(qty * priceNoTax * 100) / 100
+      }
+      // 含税单价 = 不含税单价 × (1+税率)
+      if (priceNoTax !== undefined && taxRate !== undefined &&
+          (item.priceWithTax === undefined || isNaN(item.priceWithTax))) {
+        item.priceWithTax = Math.round(priceNoTax * (1 + taxRate) * 100) / 100
+      }
+      // 含税金额 = 数量 × 含税单价
+      if (qty !== undefined && item.priceWithTax !== undefined &&
+          (item.amountWithTax === undefined || isNaN(item.amountWithTax))) {
+        item.amountWithTax = Math.round(qty * item.priceWithTax * 100) / 100
+      }
+    }
 
     // 规则引擎审核
     const auditResult = auditQuote(items, doc)

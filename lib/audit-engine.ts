@@ -28,7 +28,7 @@ const TOTAL_KEYWORDS = ['合计', '总计', '小计', 'SUM']
 
 // ========== 主审核函数 ==========
 
-export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: string): AuditResult {
+export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: string, skipCalcChecks?: boolean): AuditResult {
   const docErrors: AuditError[] = []
   const lineErrors: AuditError[] = []
 
@@ -200,69 +200,70 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       }
     }
 
-    // ===== 计算校验 =====
+    // ===== 计算校验（仅限Excel场景，OCR图片跳过因为数字精度不够）=====
+    if (!skipCalcChecks) {
+      const qty = item.quantity ?? 0
+      const priceNoTax = item.priceWithoutTax ?? 0
+      const priceTax = item.priceWithTax ?? 0
+      const amountNoTax = item.amountWithoutTax ?? 0
+      const amountTax = item.amountWithTax ?? 0
+      const taxRate = effectiveTaxRate ?? 0
 
-    const qty = item.quantity ?? 0
-    const priceNoTax = item.priceWithoutTax ?? 0
-    const priceTax = item.priceWithTax ?? 0
-    const amountNoTax = item.amountWithoutTax ?? 0
-    const amountTax = item.amountWithTax ?? 0
-    const taxRate = effectiveTaxRate ?? 0
-
-    // CALC001: 不含税金额 = 数量 × 不含税单价
-    if (qty !== 0 && priceNoTax !== 0 && item.amountWithoutTax !== undefined) {
-      const expected = qty * priceNoTax
-      if (hasPrecisionError(expected, amountNoTax)) {
-        rowErrors.push({
-          code: 'CALC001',
-          rowIndex: rowIdx,
-          field: 'amountWithoutTax',
-          message: `第${rowIdx}行：不含税金额计算错误，应为 ${expected.toFixed(2)}，实际为 ${amountNoTax.toFixed(2)}`,
-          severity: 'major',
-          expected: expected.toFixed(2),
-          actual: amountNoTax.toFixed(2),
-        })
+      // CALC001: 不含税金额 = 数量 × 不含税单价
+      if (qty !== 0 && priceNoTax !== 0 && item.amountWithoutTax !== undefined) {
+        const expected = qty * priceNoTax
+        if (hasPrecisionError(expected, amountNoTax)) {
+          rowErrors.push({
+            code: 'CALC001',
+            rowIndex: rowIdx,
+            field: 'amountWithoutTax',
+            message: `第${rowIdx}行：不含税金额计算错误，应为 ${expected.toFixed(2)}，实际为 ${amountNoTax.toFixed(2)}`,
+            severity: 'major',
+            expected: expected.toFixed(2),
+            actual: amountNoTax.toFixed(2),
+          })
+        }
       }
-    }
 
-    // CALC002: 含税单价 = 不含税单价 × (1+税率)
-    if (priceNoTax !== 0 && taxRate !== 0 && item.priceWithTax !== undefined) {
-      const expected = priceNoTax * (1 + taxRate)
-      if (hasPrecisionError(expected, priceTax)) {
-        rowErrors.push({
-          code: 'CALC002',
-          rowIndex: rowIdx,
-          field: 'priceWithTax',
-          message: `第${rowIdx}行：含税单价计算错误，应为 ${expected.toFixed(2)}，实际为 ${priceTax.toFixed(2)}`,
-          severity: 'major',
-          expected: expected.toFixed(2),
-          actual: priceTax.toFixed(2),
-        })
+      // CALC002: 含税单价 = 不含税单价 × (1+税率)
+      if (priceNoTax !== 0 && taxRate !== 0 && item.priceWithTax !== undefined) {
+        const expected = priceNoTax * (1 + taxRate)
+        if (hasPrecisionError(expected, priceTax)) {
+          rowErrors.push({
+            code: 'CALC002',
+            rowIndex: rowIdx,
+            field: 'priceWithTax',
+            message: `第${rowIdx}行：含税单价计算错误，应为 ${expected.toFixed(2)}，实际为 ${priceTax.toFixed(2)}`,
+            severity: 'major',
+            expected: expected.toFixed(2),
+            actual: priceTax.toFixed(2),
+          })
+        }
       }
-    }
 
-    // CALC003: 含税金额 = 数量 × 含税单价
-    if (qty !== 0 && priceTax !== 0 && item.amountWithTax !== undefined) {
-      const expected = qty * priceTax
-      if (hasPrecisionError(expected, amountTax)) {
-        rowErrors.push({
-          code: 'CALC003',
-          rowIndex: rowIdx,
-          field: 'amountWithTax',
-          message: `第${rowIdx}行：含税金额计算错误，应为 ${expected.toFixed(2)}，实际为 ${amountTax.toFixed(2)}`,
-          severity: 'major',
-          expected: expected.toFixed(2),
-          actual: amountTax.toFixed(2),
-        })
+      // CALC003: 含税金额 = 数量 × 含税单价
+      if (qty !== 0 && priceTax !== 0 && item.amountWithTax !== undefined) {
+        const expected = qty * priceTax
+        if (hasPrecisionError(expected, amountTax)) {
+          rowErrors.push({
+            code: 'CALC003',
+            rowIndex: rowIdx,
+            field: 'amountWithTax',
+            message: `第${rowIdx}行：含税金额计算错误，应为 ${expected.toFixed(2)}，实际为 ${amountTax.toFixed(2)}`,
+            severity: 'major',
+            expected: expected.toFixed(2),
+            actual: amountTax.toFixed(2),
+          })
+        }
       }
     }
 
     lineErrors.push(...rowErrors)
   }
 
-  // ===== 合计行校验 =====
+  // ===== 合计行校验（仅Excel场景做合计校验，OCR跳过）=====
   if (totalRow) {
-    const totalErrors = checkTotalRow(totalRow, dataItems)
+    const totalErrors = checkTotalRow(totalRow, dataItems, skipCalcChecks)
     lineErrors.push(...totalErrors)
   }
 
@@ -481,7 +482,7 @@ function checkSequence(items: QuoteItem[]): AuditError[] {
 }
 
 /** 合计行校验 */
-function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[]): AuditError[] {
+function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[], skipCalcCheck?: boolean): AuditError[] {
   const errors: AuditError[] = []
 
   // TOTAL001: 合计行缺少"合计"文字（轻微）
@@ -494,35 +495,38 @@ function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[]): AuditError[
     })
   }
 
-  // CALC004: 不含税合计校验
-  if (totalRow.amountWithoutTax !== undefined) {
-    const sumAmountNoTax = dataItems.reduce((sum, item) => {
-      return sum + (item.amountWithoutTax || 0)
-    }, 0)
-    if (hasPrecisionError(sumAmountNoTax, totalRow.amountWithoutTax)) {
-      errors.push({
-        code: 'CALC004',
-        message: `不含税合计错误：各行之和为 ${sumAmountNoTax.toFixed(2)}，合计行为 ${totalRow.amountWithoutTax.toFixed(2)}`,
-        severity: 'major',
-        expected: sumAmountNoTax.toFixed(2),
-        actual: totalRow.amountWithoutTax.toFixed(2),
-      })
+  // CALC004/005: 合计校验（仅Excel场景）
+  if (!skipCalcCheck) {
+    // CALC004: 不含税合计校验
+    if (totalRow.amountWithoutTax !== undefined) {
+      const sumAmountNoTax = dataItems.reduce((sum, item) => {
+        return sum + (item.amountWithoutTax || 0)
+      }, 0)
+      if (hasPrecisionError(sumAmountNoTax, totalRow.amountWithoutTax)) {
+        errors.push({
+          code: 'CALC004',
+          message: `不含税合计错误：各行之和为 ${sumAmountNoTax.toFixed(2)}，合计行为 ${totalRow.amountWithoutTax.toFixed(2)}`,
+          severity: 'major',
+          expected: sumAmountNoTax.toFixed(2),
+          actual: totalRow.amountWithoutTax.toFixed(2),
+        })
+      }
     }
-  }
 
-  // CALC005: 含税合计校验
-  if (totalRow.amountWithTax !== undefined) {
-    const sumAmountTax = dataItems.reduce((sum, item) => {
-      return sum + (item.amountWithTax || 0)
-    }, 0)
-    if (hasPrecisionError(sumAmountTax, totalRow.amountWithTax)) {
-      errors.push({
-        code: 'CALC005',
-        message: `含税合计错误：各行之和为 ${sumAmountTax.toFixed(2)}，合计行为 ${totalRow.amountWithTax.toFixed(2)}`,
-        severity: 'major',
-        expected: sumAmountTax.toFixed(2),
-        actual: totalRow.amountWithTax.toFixed(2),
-      })
+    // CALC005: 含税合计校验
+    if (totalRow.amountWithTax !== undefined) {
+      const sumAmountTax = dataItems.reduce((sum, item) => {
+        return sum + (item.amountWithTax || 0)
+      }, 0)
+      if (hasPrecisionError(sumAmountTax, totalRow.amountWithTax)) {
+        errors.push({
+          code: 'CALC005',
+          message: `含税合计错误：各行之和为 ${sumAmountTax.toFixed(2)}，合计行为 ${totalRow.amountWithTax.toFixed(2)}`,
+          severity: 'major',
+          expected: sumAmountTax.toFixed(2),
+          actual: totalRow.amountWithTax.toFixed(2),
+        })
+      }
     }
   }
 

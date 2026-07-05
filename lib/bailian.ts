@@ -160,10 +160,21 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
     if (m) result.contactPhone = m[1].trim()
   }
 
-  // 有效期
+  // 有效期（扩大搜索范围）
   if (!result.validityPeriod || !result.validityPeriod.trim()) {
-    const m = text.match(/(?:有效[期内]|报价[期内])[：:]\s*([^\n\r]{2,20})/)
-    if (m) result.validityPeriod = m[1].trim()
+    // 多模式搜索
+    const patterns = [
+      /(?:有效[期内]|报价[期内]|报价有效)[^，。\n]{1,20}/,
+      /有效[期内到]\s*[\d年月日天内]+\s*[天日月年]?/,
+      /报价[有效].{0,2}\s*[\d年月日天内]+\s*[天日月年]?/,
+    ]
+    for (const p of patterns) {
+      const m = text.match(p)
+      if (m) {
+        result.validityPeriod = m[0].trim()
+        break
+      }
+    }
   }
 
   return result

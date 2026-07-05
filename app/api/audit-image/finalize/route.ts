@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const auditResult = auditQuote(items, doc, ocrText || '')
+    const auditResult = auditQuote(items, doc, ocrText || '', true)
 
     try {
       const priceItems = await checkPrices(items)

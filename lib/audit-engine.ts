@@ -35,7 +35,12 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
   // ===== 文档级校验 =====
 
   // DOC001: 客户名称缺失（重大）
-  if (!doc.customerName || doc.customerName.trim() === '') {
+  // 校验：空值 或 提取的值明显不是公司名称（太短、含占位符）
+  const customerName = (doc.customerName || '').trim()
+  const isInvalidName = customerName === '' ||
+    PLACEHOLDERS.some(p => customerName.includes(p)) ||
+    customerName.length <= 1
+  if (isInvalidName) {
     docErrors.push({
       code: 'DOC001',
       field: 'customerName',
@@ -336,27 +341,45 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     if (rowText.includes('报价')) {
       doc.title = rowText.slice(0, 50)
     }
-    if (/客户|甲方|业主/.test(rowText)) {
-      const match = rowText.match(/(?:客户|甲方|业主)[名称]*[:：\s]*(.+)/)
-      if (match) doc.customerName = match[1].trim()
+
+    // 提取客户名称：要求"客户/甲方/业主"后紧跟冒号/空格，后面至少2个中文字符
+    const customerMatch = rowText.match(/(?:客户|甲方|业主)(?:名称)?[：:]\s*([^\s]{2,20})/)
+    if (customerMatch && !doc.customerName) {
+      const val = customerMatch[1].trim()
+      // 过滤明显不是公司名称的匹配
+      if (val.length >= 2 && !PLACEHOLDERS.some(p => val.includes(p))) {
+        doc.customerName = val
+      }
     }
-    if (/项目|工程/.test(rowText)) {
-      const match = rowText.match(/(?:项目|工程)[名称]*[:：\s]*(.+)/)
-      if (match) doc.projectName = match[1].trim()
+
+    // 项目名称
+    const projectMatch = rowText.match(/(?:项目|工程)(?:名称)?[：:]\s*([^\s]{2,30})/)
+    if (projectMatch && !doc.projectName) {
+      doc.projectName = projectMatch[1].trim()
     }
-    if (/有效期|截止/.test(rowText)) {
-      const match = rowText.match(/(?:有效期|截止)[日期]*[:：\s]*(.+)/)
-      if (match) doc.validityPeriod = match[1].trim()
+
+    // 有效期
+    const validMatch = rowText.match(/(?:报价)?(?:有效[期内到]|截止日期)[：:]\s*(.+)/)
+    if (validMatch && !doc.validityPeriod) {
+      doc.validityPeriod = validMatch[1].trim()
     }
-    if (/编制|报价人/.test(rowText)) {
-      const match = rowText.match(/(?:编制|报价)人[:：\s]*(.+)/)
-      if (match) doc.editorName = match[1].trim()
+
+    // 编制人
+    const editMatch = rowText.match(/(?:编制|报价|制表)人[：:]\s*([^\s]{1,8})/)
+    if (editMatch && !doc.editorName) {
+      doc.editorName = editMatch[1].trim()
     }
-    if (/联系/.test(rowText)) {
-      const match = rowText.match(/联系人[:：\s]*(.+)/)
-      if (match) doc.contactName = match[1].trim()
-      const phoneMatch = rowText.match(/电话[:：\s]*([\d\-]+)/)
-      if (phoneMatch) doc.contactPhone = phoneMatch[1].trim()
+
+    // 联系人
+    const contactMatch = rowText.match(/联系人[：:]\s*([^\s]{1,8})/)
+    if (contactMatch && !doc.contactName) {
+      doc.contactName = contactMatch[1].trim()
+    }
+
+    // 电话
+    const phoneMatch = rowText.match(/(?:电话|手机|Tel)[：:]\s*([\d\-]{7,15})/)
+    if (phoneMatch && !doc.contactPhone) {
+      doc.contactPhone = phoneMatch[1].trim()
     }
   }
 

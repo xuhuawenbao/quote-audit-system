@@ -12,6 +12,8 @@ export interface QuoteItem {
   amountWithoutTax?: number
   amountWithTax?: number
   isTotalRow?: boolean
+  /** 品牌与规格共用一列（如"品牌/规格型号"），不单独报品牌缺失 */
+  brandMerged?: boolean
 }
 
 export interface DocumentInfo {

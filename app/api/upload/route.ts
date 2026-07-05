@@ -36,27 +36,24 @@ export async function POST(request: NextRequest) {
 
     const { items, doc } = parseExcelData(rows)
 
-    // 自动补全公式列：xlsx免费版不支持公式计算
-    // 如果含税相关列缺失，用已知值自动推算
+    // 自动补全公式列：xlsx免费版不计算公式，且公式列可能有旧缓存值
+    // 只要有不含税单价和税率，含税单价、含税金额一律用计算值
     for (const item of items) {
       if (item.isTotalRow) continue
       const qty = item.quantity
       const priceNoTax = item.priceWithoutTax
       const taxRate = item.taxRate
 
-      // 不含税金额 = 数量 × 不含税单价
-      if (qty !== undefined && priceNoTax !== undefined &&
-          (item.amountWithoutTax === undefined || isNaN(item.amountWithoutTax))) {
+      // 不含税金额 = 数量 × 不含税单价（公式列，覆盖）
+      if (qty !== undefined && priceNoTax !== undefined) {
         item.amountWithoutTax = Math.round(qty * priceNoTax * 100) / 100
       }
-      // 含税单价 = 不含税单价 × (1+税率)
-      if (priceNoTax !== undefined && taxRate !== undefined &&
-          (item.priceWithTax === undefined || isNaN(item.priceWithTax))) {
+      // 含税单价 = 不含税单价 × (1+税率)（公式列，覆盖）
+      if (priceNoTax !== undefined && taxRate !== undefined) {
         item.priceWithTax = Math.round(priceNoTax * (1 + taxRate) * 100) / 100
       }
-      // 含税金额 = 数量 × 含税单价
-      if (qty !== undefined && item.priceWithTax !== undefined &&
-          (item.amountWithTax === undefined || isNaN(item.amountWithTax))) {
+      // 含税金额 = 数量 × 含税单价（公式列，覆盖）
+      if (qty !== undefined && item.priceWithTax !== undefined) {
         item.amountWithTax = Math.round(qty * item.priceWithTax * 100) / 100
       }
     }

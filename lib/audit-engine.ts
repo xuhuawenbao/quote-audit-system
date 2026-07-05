@@ -135,15 +135,25 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       })
     }
 
-    // ITEM002: 品牌缺失（重大）
+    // ITEM002: 品牌缺失（重大）—— 合并列时跳过，改为轻微提醒
     if (!item.brand || item.brand.trim() === '') {
-      rowErrors.push({
-        code: 'ITEM002',
-        rowIndex: rowIdx,
-        field: 'brand',
-        message: `第${rowIdx}行：品牌未填写`,
-        severity: 'major',
-      })
+      if (item.brandMerged) {
+        rowErrors.push({
+          code: 'ITEM002',
+          rowIndex: rowIdx,
+          field: 'brand',
+          message: `第${rowIdx}行：品牌与规格共用一列，无法单独确认品牌信息，请核实`,
+          severity: 'minor',
+        })
+      } else {
+        rowErrors.push({
+          code: 'ITEM002',
+          rowIndex: rowIdx,
+          field: 'brand',
+          message: `第${rowIdx}行：品牌未填写`,
+          severity: 'major',
+        })
+      }
     }
 
     // ITEM003: 规格型号缺失（重大）
@@ -371,9 +381,9 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     const rawSpec = getCell(row, columnMap.spec)
     let rawBrand = getCell(row, columnMap.brand)
 
-    // 品牌规格合并列（brand=-1）: spec列的值既是规格也是品牌
+    // 品牌规格合并列（brand=-1）: 不设置品牌值，标记为合并列
     if (columnMap.brand === -1) {
-      rawBrand = rawSpec  // 同一列数据，品牌和规格相同
+      rawBrand = ''  // 不把规格值当品牌
     }
 
     const item: QuoteItem = {
@@ -382,6 +392,7 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       name: getCell(row, columnMap.name),
       spec: rawSpec,
       brand: rawBrand,
+      brandMerged: columnMap.brand === -1,
       unit: getCell(row, columnMap.unit),
       quantity: parseNumeric(getCell(row, columnMap.quantity)),
       priceWithoutTax: parseNumeric(getCell(row, columnMap.priceWithoutTax)),
@@ -456,9 +467,13 @@ function getCell(row: any[], colIndex: number | undefined): string {
 
 function parseNumeric(val: any): number | undefined {
   if (val === undefined || val === null || val === '') return undefined
-  const cleaned = String(val).replace(/[,%\s]/g, '')
+  const str = String(val)
+  // 百分比处理：如 "6%" → 0.06
+  const hasPercent = str.includes('%')
+  const cleaned = str.replace(/[,%\s]/g, '')
   const num = parseFloat(cleaned)
-  return isNaN(num) ? undefined : num
+  if (isNaN(num)) return undefined
+  return hasPercent ? Math.round((num / 100) * 10000) / 10000 : num
 }
 
 function isEmptyRow(item: QuoteItem): boolean {

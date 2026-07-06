@@ -369,9 +369,14 @@ export default function UploadPage() {
         )}
 
         {/* Footer */}
-        <p className="text-center text-xs text-gray-400 mt-6">
-          报价单AI审核系统 v2.0 · 数据安全存储
-        </p>
+        <div className="flex justify-center gap-4 mt-6">
+          <p className="text-center text-xs text-gray-400">
+            报价单AI审核系统 v2.0 · 数据安全存储
+          </p>
+          <a href="/qrcode" className="text-xs text-blue-600 hover:underline">
+            生成二维码 →
+          </a>
+        </div>
       </div>
     </main>
   )

@@ -164,6 +164,14 @@ export default function UploadPage() {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">报价单AI审核</h1>
           <p className="text-gray-600">上传报价单，自动审核数据完整性</p>
+          <div className="mt-4 p-3 bg-white rounded-lg inline-block border border-gray-200">
+            <img 
+              src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://quote-audit-system.vercel.app" 
+              alt="扫码访问报价单审核"
+              className="w-36 h-36 mx-auto"
+            />
+            <p className="text-xs text-gray-500 mt-2">扫码直接访问</p>
+          </div>
         </div>
 
         {result?.debug && (

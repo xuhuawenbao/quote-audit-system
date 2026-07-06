@@ -58,6 +58,7 @@ export interface AuditResult {
     validityPeriodValid: boolean
     editorNameValid: boolean
     contactValid: boolean
+    contactPhoneValid: boolean
     placeholderReplaced: boolean
     filingDateValid: boolean
     errors: AuditError[]

@@ -165,7 +165,8 @@ export default function ResultPage() {
               {renderCheckItem('项目名称', docLevel.projectNameValid)}
               {renderCheckItem('报价有效期', docLevel.validityPeriodValid)}
               {renderCheckItem('编制人', docLevel.editorNameValid)}
-              {renderCheckItem('联系人/电话', docLevel.contactValid)}
+              {renderCheckItem('联系人', docLevel.contactValid)}
+              {renderCheckItem('联系电话', docLevel.contactPhoneValid)}
               {renderCheckItem('占位符已替换', docLevel.placeholderReplaced)}
             </div>
             {docErrors.length > 0 && (

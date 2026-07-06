@@ -123,6 +123,17 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
     })
   }
 
+  // DOC008: 联系电话缺失（轻微提醒）
+  // 独立校验，即使联系人已填，电话没填也应提醒
+  if (!doc.contactPhone || doc.contactPhone.trim() === '') {
+    docErrors.push({
+      code: 'DOC008',
+      field: 'contactPhone',
+      message: '联系电话未填写，建议补充',
+      severity: 'minor',
+    })
+  }
+
   // ===== 行级校验 =====
 
   let validLineCount = 0
@@ -323,6 +334,7 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       validityPeriodValid: !docErrors.some(e => e.code === 'DOC004'),
       editorNameValid: !docErrors.some(e => e.code === 'DOC005'),
       contactValid: !docErrors.some(e => e.code === 'DOC006'),
+      contactPhoneValid: !docErrors.some(e => e.code === 'DOC008'),
       placeholderReplaced: !docErrors.some(e => e.code === 'DOC003'),
       filingDateValid: !docErrors.some(e => e.code === 'DOC007'),
       errors: docErrors,

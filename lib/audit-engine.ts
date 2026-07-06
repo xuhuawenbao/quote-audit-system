@@ -227,8 +227,8 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
         code: 'ITEM007',
         rowIndex: rowIdx,
         field: 'taxRate',
-        message: `第${rowIdx}行：税率未填写，建议补充确认`,
-        severity: 'minor',
+        message: `第${rowIdx}行：税率未填写`,
+        severity: 'major',
       })
     }
 

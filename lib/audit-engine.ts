@@ -113,6 +113,16 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
     })
   }
 
+  // DOC007: 填报日期缺失（重大）
+  if (!doc.filingDate || doc.filingDate.trim() === '') {
+    docErrors.push({
+      code: 'DOC007',
+      field: 'filingDate',
+      message: '填报日期未填写，请补充',
+      severity: 'major',
+    })
+  }
+
   // ===== 行级校验 =====
 
   let validLineCount = 0
@@ -314,6 +324,7 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       editorNameValid: !docErrors.some(e => e.code === 'DOC005'),
       contactValid: !docErrors.some(e => e.code === 'DOC006'),
       placeholderReplaced: !docErrors.some(e => e.code === 'DOC003'),
+      filingDateValid: !docErrors.some(e => e.code === 'DOC007'),
       errors: docErrors,
     },
     lineItems: {
@@ -437,6 +448,18 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
             doc.contactPhone = nextCell
             continue
           }
+        }
+      }
+    // 填报日期
+      if (/(?:填报|报价|编制)日[期到]|日[期到]/.test(cellClean) && !doc.filingDate) {
+        const colonMatch = cellClean.match(/(?:填报|报价|编制)日[期到]?[：:]\s*(.{2,20})/)
+        if (colonMatch) {
+          doc.filingDate = colonMatch[1].trim()
+          continue
+        }
+        if (nextCell) {
+          doc.filingDate = nextCell
+          continue
         }
       }
     }

@@ -24,6 +24,7 @@ export interface DocumentInfo {
   contactName?: string
   contactPhone?: string
   title?: string
+  filingDate?: string
 }
 
 export interface AuditError {
@@ -58,6 +59,7 @@ export interface AuditResult {
     editorNameValid: boolean
     contactValid: boolean
     placeholderReplaced: boolean
+    filingDateValid: boolean
     errors: AuditError[]
   }
   lineItems: {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { Upload, FileSpreadsheet, FileImage, FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { Upload, FileSpreadsheet, FileImage, FileText, CheckCircle, AlertCircle, Loader2, Copy, Smartphone, Check } from 'lucide-react'
 
 export default function UploadPage() {
   const [submitterName, setSubmitterName] = useState('')
@@ -11,6 +11,25 @@ export default function UploadPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState('')
+  const [isWeChat, setIsWeChat] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    // 检测微信浏览器
+    if (/MicroMessenger/i.test(navigator.userAgent)) {
+      setIsWeChat(true)
+    }
+  }, [])
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.origin)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback
+    }
+  }
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -158,7 +177,43 @@ export default function UploadPage() {
   const hasMajor = majorCount > 0
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
+    <>
+      {/* 微信浏览器提示遮罩 */}
+      {isWeChat && (
+        <div className="fixed inset-0 z-50 bg-white flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Smartphone className="w-10 h-10 text-blue-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-800 mb-3">请在浏览器中打开</h2>
+            <p className="text-gray-500 text-sm mb-6 leading-relaxed">
+              当前页面在微信中无法正常使用。<br />
+              请点击右上角「···」，选择「在浏览器中打开」
+            </p>
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-6">
+              <p className="text-xs text-gray-400 mb-2">或复制以下地址到浏览器打开</p>
+              <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200">
+                <span className="text-sm text-gray-700 truncate flex-1">{typeof window !== 'undefined' ? window.location.origin : ''}</span>
+                <button
+                  onClick={copyUrl}
+                  className="text-blue-600 hover:text-blue-800 transition-colors shrink-0"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              {copied && <p className="text-green-600 text-xs mt-1">已复制！</p>}
+            </div>
+            <button
+              onClick={copyUrl}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              复制链接
+            </button>
+          </div>
+        </div>
+      )}
+
+      <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -379,5 +434,6 @@ export default function UploadPage() {
         </div>
       </div>
     </main>
+    </>
   )
 }

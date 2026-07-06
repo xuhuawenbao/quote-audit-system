@@ -80,6 +80,17 @@ export default function QRCodePage() {
             </p>
           </div>
 
+          {/* 微信兼容提示 */}
+          <div className="px-8 pb-4">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-yellow-800 mb-1">⚠️ 微信扫码后可能无法直接打开</p>
+              <p className="text-xs text-yellow-700 leading-relaxed">
+                如果微信扫码后提示「已停止访问」或页面空白，请点击右上角「···」，
+                选择「在浏览器中打开」即可正常使用。
+              </p>
+            </div>
+          </div>
+
           {/* 系统地址 */}
           <div className="px-8 pb-4">
             <label className="block text-xs text-gray-400 mb-1">系统地址</label>

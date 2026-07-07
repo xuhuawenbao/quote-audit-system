@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
 
     const { items, doc } = parseExcelData(rows)
 
+    // 生成全文 rawText（用于有效期等底部信息的回退检测）
+    const rawText = rows.map(r => r.join('\t')).join('\n')
+
     // 自动补全公式列：xlsx免费版不计算公式，且公式列可能有旧缓存值
     // 只要有不含税单价和税率，含税单价、含税金额一律用计算值
     for (const item of items) {
@@ -58,8 +61,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 规则引擎审核
-    const auditResult = auditQuote(items, doc)
+    // 规则引擎审核（传入 rawText 用于全文回退检测）
+    const auditResult = auditQuote(items, doc, rawText)
 
     // 价格比对
     try {

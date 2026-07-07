@@ -428,8 +428,8 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       }
 
       // 编制人
-      if (/(?:编制|报价|制表|编审)人/.test(cellClean) && !doc.editorName) {
-        const colonMatch = cellClean.match(/(?:编制|报价|制表|编审)人[：:]\s*(.{1,8})/)
+      if (/(?:编制|报价|制表)人/.test(cellClean) && !doc.editorName) {
+        const colonMatch = cellClean.match(/(?:编制|报价|制表)人[：:]\s*(.{1,8})/)
         if (colonMatch) {
           doc.editorName = colonMatch[1].trim()
           continue
@@ -495,6 +495,15 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
           continue
         }
       }
+    }
+  }
+
+  // 全文本回退：有效期可能在底部（如"本报价有效期7天"写在说明行），前10行没找到时全文搜索
+  if (!doc.validityPeriod) {
+    const fullText = rows.map(r => r.join(' ')).join('\n')
+    const validityMatch = fullText.match(/(?:有效[期内到])[：:]?\s*(\d+[\.\d]*\s*[天日月周年])/)
+    if (validityMatch) {
+      doc.validityPeriod = validityMatch[0].trim()
     }
   }
 

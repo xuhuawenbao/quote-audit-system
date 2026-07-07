@@ -392,7 +392,6 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
           doc.customerName = nextCell
           continue
         }
-        // 两侧都没值 → 留空，让DOC001报错
       }
 
       // 项目名称
@@ -408,11 +407,18 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
         }
       }
 
-      // 有效期
-      if (/(?:报价)?有效[期内到]|截止日期/.test(cellClean) && !doc.validityPeriod) {
-        const colonMatch = cellClean.match(/(?:报价)?(?:有效[期内到]|截止日期)[：:]\s*(.{2,20})/)
+      // 有效期 — 支持"有效期10天"、"本报价单有效期10天"等混合写法
+      if (/(?:有效[期内到]|截止日[期到])/.test(cellClean) && !doc.validityPeriod) {
+        // 冒号格式：有效期：10天
+        const colonMatch = cellClean.match(/(?:有效[期内到]|截止日[期到])[：:]\s*(.{1,20})/)
         if (colonMatch) {
           doc.validityPeriod = colonMatch[1].trim()
+          continue
+        }
+        // 连续文字格式：有效期10天 / 本报价单有效期10天 → 提取后段
+        const textMatch = cellClean.match(/有效[期内到]\s*(\d+[\.\d]*\s*[天日月周年])/)
+        if (textMatch) {
+          doc.validityPeriod = textMatch[0]
           continue
         }
         if (nextCell) {
@@ -422,8 +428,8 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       }
 
       // 编制人
-      if (/(?:编制|报价|制表)人/.test(cellClean) && !doc.editorName) {
-        const colonMatch = cellClean.match(/(?:编制|报价|制表)人[：:]\s*(.{1,8})/)
+      if (/(?:编制|报价|制表|编审)人/.test(cellClean) && !doc.editorName) {
+        const colonMatch = cellClean.match(/(?:编制|报价|制表|编审)人[：:]\s*(.{1,8})/)
         if (colonMatch) {
           doc.editorName = colonMatch[1].trim()
           continue
@@ -447,11 +453,18 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
         }
       }
 
-      // 电话
-      if (/(?:电话|手机|Tel)/.test(cellClean) && !doc.contactPhone) {
-        const colonMatch = cellClean.match(/(?:电话|手机|Tel)[：:]\s*([\d\-]{7,15})/)
+      // 电话 — 同时检查当前单元格和右侧相邻单元格含数字的情况
+      if (/(?:电话|手机|Tel|联系电话)/.test(cellClean) && !doc.contactPhone) {
+        // 同一单元格冒号后
+        const colonMatch = cellClean.match(/(?:电话|手机|Tel|联系电话)[：:]\s*([\d\-]{7,15})/)
         if (colonMatch) {
           doc.contactPhone = colonMatch[1].trim()
+          continue
+        }
+        // 同一单元格内连续数字（无冒号，如"电话13026713315"）
+        const bareMatch = cellClean.match(/(?:电话|手机|Tel|联系电话)\s*([\d\-]{7,15})/)
+        if (bareMatch) {
+          doc.contactPhone = bareMatch[1].trim()
           continue
         }
         if (nextCell) {
@@ -462,9 +475,17 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
           }
         }
       }
-    // 填报日期
-      if (/(?:填报|报价|编制)日[期到]|日[期到]/.test(cellClean) && !doc.filingDate) {
-        const colonMatch = cellClean.match(/(?:填报|报价|编制)日[期到]?[：:]\s*(.{2,20})/)
+
+      // 填报日期 — 同时匹配"日期"、"填报日期"、"报价日期"等
+      if (/(?:填报|报价|编制)?日[期到]|日[期到]/.test(cellClean) && !doc.filingDate) {
+        // 先尝试带前缀的（填报日期：）
+        let colonMatch = cellClean.match(/(?:填报|报价|编制)日[期到]?[：:]\s*(.{2,20})/)
+        if (colonMatch) {
+          doc.filingDate = colonMatch[1].trim()
+          continue
+        }
+        // 再尝试裸日期（日期：2026.7.6）
+        colonMatch = cellClean.match(/日[期到]?[：:]\s*(.{2,20})/)
         if (colonMatch) {
           doc.filingDate = colonMatch[1].trim()
           continue

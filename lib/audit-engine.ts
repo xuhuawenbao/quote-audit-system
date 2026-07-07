@@ -125,7 +125,10 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
 
   // DOC008: 联系电话缺失（轻微提醒）
   // 独立校验，即使联系人已填，电话没填也应提醒
-  if (!doc.contactPhone || doc.contactPhone.trim() === '') {
+  // 增加 rawText 兜底：可能在合并单元格中，结构化提取遗漏了
+  const phoneValue = (doc.contactPhone || '').trim()
+  const hasPhoneInRawText = rawText ? /[电话手机Tel]\s*[：:]?\s*1[3-9]\d{9}/.test(rawText) : false
+  if (!phoneValue && !hasPhoneInRawText) {
     docErrors.push({
       code: 'DOC008',
       field: 'contactPhone',

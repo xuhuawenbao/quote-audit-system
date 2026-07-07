@@ -69,7 +69,7 @@ export async function checkPrices(items: QuoteItem[]): Promise<PriceDeviation[]>
         referencePrice,
         deviationPercent,
         searchUrl: generateSearchUrl(item.name, item.spec, item.brand),
-        status: Math.abs(deviation) > DEVIATION_THRESHOLD ? 'deviation' : 'matched',
+        status: deviation > DEVIATION_THRESHOLD ? 'deviation' : 'matched',
       })
     } else {
       // 名称匹配但品牌/规格未精确匹配 → 取第一个匹配的价格做粗略比对
@@ -89,7 +89,7 @@ export async function checkPrices(items: QuoteItem[]): Promise<PriceDeviation[]>
         referencePrice,
         deviationPercent,
         searchUrl: generateSearchUrl(item.name, item.spec, item.brand),
-        status: Math.abs(deviation) > DEVIATION_THRESHOLD ? 'deviation' : 'unmatched',
+        status: deviation > DEVIATION_THRESHOLD ? 'deviation' : 'unmatched',
       })
     }
   }

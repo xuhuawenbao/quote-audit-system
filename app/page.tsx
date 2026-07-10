@@ -34,7 +34,14 @@ export default function UploadPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0])
+      const f = e.target.files[0]
+      const ext = f.name.split('.').pop()?.toLowerCase()
+      const allowed = ['xlsx', 'xls', 'csv', 'png', 'jpg', 'jpeg']
+      if (!allowed.includes(ext || '')) {
+        setError('仅支持 Excel（.xlsx/.xls）、CSV 或图片格式')
+        return
+      }
+      setFile(f)
       setError('')
     }
   }
@@ -216,13 +223,21 @@ export default function UploadPage() {
               onDragLeave={handleDrag}
               onDragOver={handleDrag}
               onDrop={handleDrop}
-              onClick={() => document.getElementById('file-input')?.click()}
             >
+              {/* 隐藏的Excel/文件上传输入（无accept限制，手机端可弹出"文件管理器"） */}
               <input
                 id="file-input"
                 type="file"
                 className="hidden"
-                accept=".xlsx,.xls,.csv,.png,.jpg,.jpeg,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,image/png,image/jpeg"
+                onChange={handleFileChange}
+              />
+              {/* 隐藏的拍照输入（保留拍照上传能力） */}
+              <input
+                id="camera-input"
+                type="file"
+                className="hidden"
+                accept="image/*"
+                capture="environment"
                 onChange={handleFileChange}
               />
               <div className="flex flex-col items-center">
@@ -238,6 +253,23 @@ export default function UploadPage() {
                     <p className="mt-1 text-sm text-gray-500">支持 Excel、图片格式（推荐Excel）</p>
                   </>
                 )}
+              </div>
+              {/* 手机端专属：两个明确按钮 */}
+              <div className="mt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); document.getElementById('file-input')?.click(); }}
+                  className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium py-2 px-3 rounded-lg text-sm border border-blue-200 transition-colors"
+                >
+                  📄 选择文件
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); document.getElementById('camera-input')?.click(); }}
+                  className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 font-medium py-2 px-3 rounded-lg text-sm border border-green-200 transition-colors"
+                >
+                  📷 拍照上传
+                </button>
               </div>
             </div>
 

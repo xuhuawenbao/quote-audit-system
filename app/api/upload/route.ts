@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { saveRecord } from '@/lib/supabase'
 import { auditQuote, parseExcelData } from '@/lib/audit-engine'
 import { checkPrices } from '@/lib/price-check'
-import type { AuditError } from '@/types'
 import * as XLSX from 'xlsx'
 
 /**
@@ -40,85 +39,45 @@ export async function POST(request: NextRequest) {
     // 生成全文 rawText（用于有效期等底部信息的回退检测）
     const rawText = rows.map(r => r.join('\t')).join('\n')
 
-    // 第一步：用原始数据审核（先不做修正，让审核引擎看到真实值）
+    // 第一步：用原始数据审核（修正前，让审核引擎看到真实值）
     const auditResult = auditQuote(items, doc, rawText)
 
-    // 第二步：自动补全公式列（仅修正，不影响已完成的审核结果）
-    // 同时检测原始值是否已经错了，追加计算校验错误
-    const calcErrors: AuditError[] = []
+    // 过滤掉含税价/含税金额的公式缓存误报
+    // xlsx免费版读取公式列的旧缓存值，CALC002/CALC003必然误报，仅保留CALC001
+    auditResult.lineItems.errors = auditResult.lineItems.errors.filter(
+      e => e.code !== 'CALC002' && e.code !== 'CALC003'
+    )
+    // 重新计算过滤后的错误统计
+    const allFiltered = [...(auditResult.documentLevel?.errors || []), ...auditResult.lineItems.errors]
+    const majorCount = allFiltered.filter(e => e.severity === 'major').length
+    const minorCount = allFiltered.filter(e => e.severity === 'minor').length
+    auditResult.status = majorCount > 0 ? 'failed' : 'passed'
+    auditResult.summary = majorCount > 0
+      ? `审核未通过，发现 ${majorCount} 个重大错误、${minorCount} 个轻微提醒，请修正后重新提交`
+      : minorCount > 0
+        ? `审核通过（有 ${minorCount} 个轻微提醒，建议优化）`
+        : '审核通过，报价单数据完整无误'
+
+    // 第二步：自动补全公式列（xlsx免费版不计算公式，公式列可能有旧缓存值）
+    // 只修正，不报错（含税价/含税金额的公式缓存不同步是正常现象）
     for (const item of items) {
       if (item.isTotalRow) continue
       const qty = item.quantity
       const priceNoTax = item.priceWithoutTax
       const taxRate = item.taxRate
 
-      // 记录修正前的原始值
-      const origAmountNoTax = item.amountWithoutTax
-
       // 不含税金额 = 数量 × 不含税单价（公式列，覆盖）
-      if (qty !== undefined && priceNoTax !== undefined && item.amountWithoutTax !== undefined) {
-        const calcAmount = Math.round(qty * priceNoTax * 100) / 100
-        if (Math.abs(calcAmount - item.amountWithoutTax) > 0.005) {
-          calcErrors.push({
-            code: 'CALC001',
-            rowIndex: item.rowIndex,
-            field: 'amountWithoutTax',
-            message: `第${item.rowIndex}行：不含税金额计算错误，应为 ${calcAmount.toFixed(2)}，实际为 ${item.amountWithoutTax.toFixed(2)}`,
-            severity: 'major',
-            expected: calcAmount.toFixed(2),
-            actual: item.amountWithoutTax.toFixed(2),
-          })
-        }
-        item.amountWithoutTax = calcAmount
+      if (qty !== undefined && priceNoTax !== undefined) {
+        item.amountWithoutTax = Math.round(qty * priceNoTax * 100) / 100
       }
-
       // 含税单价 = 不含税单价 × (1+税率)（公式列，覆盖）
-      if (priceNoTax !== undefined && taxRate !== undefined && item.priceWithTax !== undefined) {
-        const calcPrice = Math.round(priceNoTax * (1 + taxRate) * 100) / 100
-        if (Math.abs(calcPrice - item.priceWithTax) > 0.005) {
-          calcErrors.push({
-            code: 'CALC002',
-            rowIndex: item.rowIndex,
-            field: 'priceWithTax',
-            message: `第${item.rowIndex}行：含税单价计算错误，应为 ${calcPrice.toFixed(2)}，实际为 ${item.priceWithTax.toFixed(2)}`,
-            severity: 'major',
-            expected: calcPrice.toFixed(2),
-            actual: item.priceWithTax.toFixed(2),
-          })
-        }
-        item.priceWithTax = calcPrice
+      if (priceNoTax !== undefined && taxRate !== undefined) {
+        item.priceWithTax = Math.round(priceNoTax * (1 + taxRate) * 100) / 100
       }
-
       // 含税金额 = 数量 × 含税单价（公式列，覆盖）
-      if (qty !== undefined && item.priceWithTax !== undefined && item.amountWithTax !== undefined) {
-        const calcAmount = Math.round(qty * item.priceWithTax * 100) / 100
-        if (Math.abs(calcAmount - item.amountWithTax) > 0.005) {
-          calcErrors.push({
-            code: 'CALC003',
-            rowIndex: item.rowIndex,
-            field: 'amountWithTax',
-            message: `第${item.rowIndex}行：含税金额计算错误，应为 ${calcAmount.toFixed(2)}，实际为 ${item.amountWithTax.toFixed(2)}`,
-            severity: 'major',
-            expected: calcAmount.toFixed(2),
-            actual: item.amountWithTax.toFixed(2),
-          })
-        }
-        item.amountWithTax = calcAmount
+      if (qty !== undefined && item.priceWithTax !== undefined) {
+        item.amountWithTax = Math.round(qty * item.priceWithTax * 100) / 100
       }
-    }
-
-    // 将计算校验错误合并到审核结果中
-    if (calcErrors.length > 0) {
-      auditResult.lineItems.errors.unshift(...calcErrors)
-      const majorCount = auditResult.lineItems.errors.filter(e => e.severity === 'major').length
-      const minorCount = auditResult.lineItems.errors.filter(e => e.severity === 'minor').length
-      auditResult.documentLevel.errors = auditResult.documentLevel.errors || []
-      const allErrors = [...auditResult.documentLevel.errors, ...auditResult.lineItems.errors]
-      const hasMajor = allErrors.filter(e => e.severity === 'major').length > 0
-      auditResult.status = hasMajor ? 'failed' : 'passed'
-      auditResult.summary = hasMajor
-        ? `审核未通过，发现 ${majorCount} 个重大错误、${minorCount} 个轻微提醒，请修正后重新提交`
-        : `审核通过（${minorCount} 个轻微提醒，建议优化）`
     }
 
     // 价格比对

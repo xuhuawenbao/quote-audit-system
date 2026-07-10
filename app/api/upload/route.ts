@@ -22,10 +22,10 @@ export async function POST(request: NextRequest) {
     const fileExt = file.name.split('.').pop()?.toLowerCase()
     const fileBuffer = await file.arrayBuffer()
 
-    // 仅处理Excel
-    if (fileExt !== 'xlsx' && fileExt !== 'xls') {
+    // 仅处理Excel/CSV
+    if (fileExt !== 'xlsx' && fileExt !== 'xls' && fileExt !== 'csv') {
       return NextResponse.json({
-        error: '该接口仅支持Excel文件，图片请使用图片上传方式',
+        error: '该接口仅支持Excel/CSV文件，图片请使用图片上传方式',
       }, { status: 400 })
     }
 

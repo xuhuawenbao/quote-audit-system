@@ -222,7 +222,7 @@ export default function UploadPage() {
                 id="file-input"
                 type="file"
                 className="hidden"
-                accept=".xlsx,.xls,.png,.jpg,.jpeg"
+                accept=".xlsx,.xls,.csv,.png,.jpg,.jpeg,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,image/png,image/jpeg"
                 onChange={handleFileChange}
               />
               <div className="flex flex-col items-center">

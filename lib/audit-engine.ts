@@ -528,10 +528,11 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     const row = rows[i]
     if (!row || row.every(v => v === undefined || v === null || v === '')) continue
 
-    // 判断是否为合计行：不仅看首列，也检查整行中是否出现合计/小计等字样
+    // 判断是否为合计行：不仅看首列，也检查整行中是否出现合计/小计等字样（忽略空格）
     const firstCell = String(row[0] || '').trim()
     const rowText = row.map(v => String(v || '').trim()).join(' ')
-    const isTotalRow = TOTAL_KEYWORDS.some(k => rowText.includes(k))
+    const normalizedRowText = rowText.replace(/\s+/g, '')
+    const isTotalRow = TOTAL_KEYWORDS.some(k => normalizedRowText.includes(k))
 
     // 解析各列
     const rawSpec = getCell(row, columnMap.spec)
@@ -736,7 +737,7 @@ function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[], skipCalcChec
   const errors: AuditError[] = []
 
   // TOTAL001: 合计行缺少"合计"文字（轻微）
-  const firstCell = totalRow.serialNo || ''
+  const firstCell = (totalRow.serialNo || '').replace(/\s+/g, '')
   if (!TOTAL_KEYWORDS.some(k => firstCell.includes(k))) {
     errors.push({
       code: 'TOTAL001',

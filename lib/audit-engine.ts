@@ -528,9 +528,10 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     const row = rows[i]
     if (!row || row.every(v => v === undefined || v === null || v === '')) continue
 
-    // 判断是否为合计行
+    // 判断是否为合计行：不仅看首列，也检查整行中是否出现合计/小计等字样
     const firstCell = String(row[0] || '').trim()
-    const isTotalRow = TOTAL_KEYWORDS.some(k => firstCell.includes(k))
+    const rowText = row.map(v => String(v || '').trim()).join(' ')
+    const isTotalRow = TOTAL_KEYWORDS.some(k => rowText.includes(k))
 
     // 解析各列
     const rawSpec = getCell(row, columnMap.spec)

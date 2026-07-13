@@ -12,12 +12,12 @@ const COLUMN_KEYWORDS: Record<string, string[]> = {
   spec: ['规格型号', '规格', '型号'],
   brand: ['品牌', '厂家', '厂商', '产地', '生产厂家', '品牌/厂家', '品牌产地'],
   unit: ['单位', '计量单位'],
-  quantity: ['数量', '工程量', 'Qty'],
+  quantity: ['数量', '实际数量', '工程量', 'Qty'],
   priceWithoutTax: ['不含税单价', '未税单价', '单价(不含税)'],
   taxRate: ['税率', '税点', '税额'],
   priceWithTax: ['含税单价', '含税价', '单价(含税)'],
-  amountWithoutTax: ['不含税金额', '未税金额', '不含税合价', '金额(不含税)'],
-  amountWithTax: ['含税金额', '合价', '含税合价', '含税总价', '金额(含税)'],
+  amountWithoutTax: ['不含税金额', '未税金额', '不含税合价', '金额(不含税)', '报价不含税金额'],
+  amountWithTax: ['含税金额', '合价', '含税合价', '含税总价', '金额(含税)', '报价含税金额', '结算含税金额'],
 }
 
 /** 占位符关键词 */
@@ -585,8 +585,14 @@ function findHeaderRow(rows: any[][]): { headerRowIndex: number; columnMap: Reco
       }
 
       for (const [key, keywords] of Object.entries(COLUMN_KEYWORDS)) {
+        // 含税单价/金额的关键词（如"含税单价"）是"不含税单价"的子串，
+        // 因此遇到明确写"不含税"的表头时，应跳过含税列的匹配，避免列错位。
+        if ((key === 'priceWithTax' || key === 'amountWithTax') && cleanText.includes('不含税')) {
+          continue
+        }
+
         if (keywords.some(kw => cleanText.includes(kw))) {
-          if (!columnMap[key]) {
+          if (columnMap[key] === undefined) {
             columnMap[key] = col
             matchedKeys.add(key)
           }
@@ -626,9 +632,48 @@ function parseNumeric(val: any): number | undefined {
   return hasPercent ? Math.round((num / 100) * 10000) / 10000 : num
 }
 
+/** 常见表头文字（如结算单中出现第二次表头行时，应视为空行跳过） */
+const HEADER_LABELS = new Set([
+  '名称', '商品名称', '项目名称', '材料名称', '品名', '工程内容',
+  '规格', '型号', '规格/型号', '规格型号',
+  '品牌', '厂家', '厂商', '品牌/厂家',
+  '单位', '计量单位',
+  '数量', '工程量', '实际数量', '报价数量',
+  '单价', '不含税单价', '未税单价', '含税单价',
+  '金额', '不含税金额', '未税金额', '含税金额', '报价不含税金额', '报价含税金额', '结算含税金额',
+  '税率', '税点', '税额',
+  '合计', '总计', '小计', '变更小计', '原合同小计',
+  '序号', '编号', '项次', 'No', 'NO',
+  '增减标记', '变更金额', '备注',
+])
+
+function looksLikeHeaderLabel(val: any): boolean {
+  if (val === undefined || val === null) return false
+  const s = String(val).trim().replace(/[\r\n]+/g, '')
+  return HEADER_LABELS.has(s)
+}
+
 function isEmptyRow(item: QuoteItem): boolean {
-  const coreFields = [item.name, item.spec, item.unit, item.priceWithoutTax]
-  return coreFields.every(v => v === undefined || v === null || v === '')
+  // 空行判定：如果名称、规格、单位、数量、金额类字段全部为空，
+  // 或者名称/规格/单位里填的是表头文字本身（如第二段表头"名称"），则视为空行/表头行，跳过校验。
+  // 这样可以兼容结算单等表格中大量预留序号但无实质内容的空行，同时不影响报价单的正常校验。
+  const nameStr = item.name ? String(item.name).trim() : ''
+  const specStr = item.spec ? String(item.spec).trim() : ''
+  const unitStr = item.unit ? String(item.unit).trim() : ''
+
+  if (looksLikeHeaderLabel(nameStr) || looksLikeHeaderLabel(specStr) || looksLikeHeaderLabel(unitStr)) {
+    return true
+  }
+
+  const hasName = nameStr !== ''
+  const hasSpec = specStr !== ''
+  const hasUnit = unitStr !== ''
+  const hasQty = item.quantity !== undefined && item.quantity !== null && !isNaN(item.quantity)
+  const hasPriceNoTax = item.priceWithoutTax !== undefined && item.priceWithoutTax !== null && !isNaN(item.priceWithoutTax)
+  const hasAmountNoTax = item.amountWithoutTax !== undefined && item.amountWithoutTax !== null && !isNaN(item.amountWithoutTax)
+  const hasAmountTax = item.amountWithTax !== undefined && item.amountWithTax !== null && !isNaN(item.amountWithTax)
+
+  return !hasName && !hasSpec && !hasUnit && !hasQty && !hasPriceNoTax && !hasAmountNoTax && !hasAmountTax
 }
 
 function hasPrecisionError(expected: number, actual: number): boolean {

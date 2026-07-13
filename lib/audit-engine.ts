@@ -372,7 +372,7 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     for (let c = 0; c < row.length; c++) {
       const cell = String(row[c] || '').trim()
       if (!cell) continue
-      if (cell.includes('报价单') || cell.includes('报价表')) {
+      if (/报价[单表书]|结算[单表书]|工程[单表]|对账[单表]/.test(cell)) {
         if (!doc.title) doc.title = cell.slice(0, 50).replace(/[\r\n]+/g, '')
       }
     }

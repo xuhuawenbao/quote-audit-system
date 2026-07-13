@@ -75,20 +75,25 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
   }
 
   // DOC004: 报价有效期缺失（轻微）
-  // 检查：字段为空，或提取的值明显不对（不含"有效"和天/月单位），且原始文本中也找不到有效表达
-  const validityValue = (doc.validityPeriod || '').trim()
-  const validityLooksValid = validityValue.length > 0 &&
-    validityValue.includes('有效') &&
-    /[天日月周年]/.test(validityValue)
-  const hasValidityInRawText = rawText ? /有效[期内].{0,10}[\d一二三四五六七八九十]+\s*[天日月周年]/.test(rawText) : false
+  // 仅对报价单类文档校验；结算单、结算表等不需要报价有效期
+  const docTitle = (doc.title || '').trim()
+  const isSettlementDoc = /结算[单表书]/.test(docTitle)
+  if (!isSettlementDoc) {
+    // 检查：字段为空，或提取的值明显不对（不含"有效"和天/月单位），且原始文本中也找不到有效表达
+    const validityValue = (doc.validityPeriod || '').trim()
+    const validityLooksValid = validityValue.length > 0 &&
+      validityValue.includes('有效') &&
+      /[天日月周年]/.test(validityValue)
+    const hasValidityInRawText = rawText ? /有效[期内].{0,10}[\d一二三四五六七八九十]+\s*[天日月周年]/.test(rawText) : false
 
-  if (!validityLooksValid && !hasValidityInRawText) {
-    docErrors.push({
-      code: 'DOC004',
-      field: 'validityPeriod',
-      message: '报价有效期未填写，建议补充',
-      severity: 'minor',
-    })
+    if (!validityLooksValid && !hasValidityInRawText) {
+      docErrors.push({
+        code: 'DOC004',
+        field: 'validityPeriod',
+        message: '报价有效期未填写，建议补充',
+        severity: 'minor',
+      })
+    }
   }
 
   // DOC005: 编制人缺失（重大）

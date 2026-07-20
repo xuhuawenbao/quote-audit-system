@@ -30,14 +30,26 @@ export async function POST(request: NextRequest) {
     }
 
     const workbook = XLSX.read(fileBuffer, { type: 'array' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
     // raw:false 确保公式单元格返回计算值而非公式字符串
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
 
-    const { items, doc } = parseExcelData(rows)
+    // 遍历所有 Sheet，自动选择数据行最多的那个来审核
+    // 支持同一 xlsx 文件包含报价单、结算单等多个 Sheet 的场景
+    let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '' }
+    let bestDataCount = 0
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName]
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
+      const { items, doc } = parseExcelData(rows)
+      // 跳过完全无法解析出数据行的 Sheet
+      const dataItems = items.filter((i: any) => !i.isTotalRow && (i.name || i.quantity !== undefined))
+      if (dataItems.length > bestDataCount) {
+        bestDataCount = dataItems.length
+        bestSheet = { items, doc, rawText: rows.map(r => r.join('\t')).join('\n'), sheetName }
+      }
+    }
 
-    // 生成全文 rawText（用于有效期等底部信息的回退检测）
-    const rawText = rows.map(r => r.join('\t')).join('\n')
+    const { items, doc } = bestSheet
+    const rawText = bestSheet.rawText
 
     // 第一步：用原始数据审核（修正前，让审核引擎看到真实值）
     const auditResult = auditQuote(items, doc, rawText)

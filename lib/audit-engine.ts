@@ -5,6 +5,9 @@ import { QuoteItem, DocumentInfo, AuditResult, AuditError } from '@/types'
 /** 精度容差：差值 ≥ 0.005 视为计算错误 */
 const PRECISION_TOLERANCE = 0.005
 
+/** 合计行精度容差：多行数据求和时精度误差会累积，放宽到 0.1 避免误报 */
+const TOTAL_TOLERANCE = 0.1
+
 /** 列映射关键词（支持多种表头写法） */
 const COLUMN_KEYWORDS: Record<string, string[]> = {
   serialNo: ['序号', '编号', 'No', 'NO', '项次'],
@@ -764,7 +767,7 @@ function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[], skipCalcChec
       const sumAmountNoTax = dataItems.reduce((sum, item) => {
         return sum + (item.amountWithoutTax || 0)
       }, 0)
-      if (hasPrecisionError(sumAmountNoTax, totalRow.amountWithoutTax)) {
+      if (Math.abs(Math.round(sumAmountNoTax * 100) / 100 - Math.round(totalRow.amountWithoutTax * 100) / 100) >= TOTAL_TOLERANCE) {
         errors.push({
           code: 'CALC004',
           message: `不含税合计错误：各行之和为 ${sumAmountNoTax.toFixed(2)}，合计行为 ${totalRow.amountWithoutTax.toFixed(2)}`,
@@ -780,7 +783,7 @@ function checkTotalRow(totalRow: QuoteItem, dataItems: QuoteItem[], skipCalcChec
       const sumAmountTax = dataItems.reduce((sum, item) => {
         return sum + (item.amountWithTax || 0)
       }, 0)
-      if (hasPrecisionError(sumAmountTax, totalRow.amountWithTax)) {
+      if (Math.abs(Math.round(sumAmountTax * 100) / 100 - Math.round(totalRow.amountWithTax * 100) / 100) >= TOTAL_TOLERANCE) {
         errors.push({
           code: 'CALC005',
           message: `含税合计错误：各行之和为 ${sumAmountTax.toFixed(2)}，合计行为 ${totalRow.amountWithTax.toFixed(2)}`,

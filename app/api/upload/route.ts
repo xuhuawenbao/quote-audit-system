@@ -32,12 +32,14 @@ export async function POST(request: NextRequest) {
     const workbook = XLSX.read(fileBuffer, { type: 'array' })
     // raw:false 确保公式单元格返回计算值而非公式字符串
 
-    // 遍历所有 Sheet，自动选择数据行最多的那个来审核
-    // 支持同一 xlsx 文件包含报价单、结算单等多个 Sheet 的场景
+    // 遍历所有 Sheet，优先选择可见的 Sheet 中数据行最多的来审核
+    // 支持同一 xlsx 文件包含隐藏的报价单+可见的结算单等场景
     let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '' }
     let bestDataCount = 0
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName]
+      // 跳过隐藏的 Sheet（如用户模板中隐藏的报价单底稿）
+      if (sheet['!hidden'] || (sheet as any).sheet_state === 'hidden') continue
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
       const { items, doc } = parseExcelData(rows)
       // 跳过完全无法解析出数据行的 Sheet

@@ -66,7 +66,17 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
     doc.editorName, doc.contactName, doc.contactPhone, doc.validityPeriod
   ].filter(Boolean).join(' ')
   const fullText = rawText ? `${allDocText} ${rawText}` : allDocText
-  if (PLACEHOLDERS.some(p => fullText.includes(p))) {
+  // 注意：标题中连续超过3个*号是常见装饰符号（如"*****报价单"），不是占位符
+  // 因此只检查独立的占位符关键词（单独出现或非连续*的情况）
+  const hasPlaceholder = PLACEHOLDERS.some(p => {
+    if (p === '***') {
+      // *** 检查：必须是恰好3个连续*或被其他字符隔断的3个*，排除连续4个以上*
+      const regex = new RegExp('(?<![*])[*][*][*](?![*])')
+      return regex.test(fullText)
+    }
+    return fullText.includes(p)
+  })
+  if (hasPlaceholder) {
     docErrors.push({
       code: 'DOC003',
       message: '报价单中存在占位符（***、xxx、某某等）未替换，请填写真实信息',
@@ -84,7 +94,8 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
     const validityLooksValid = validityValue.length > 0 &&
       validityValue.includes('有效') &&
       /[天日月周年]/.test(validityValue)
-    const hasValidityInRawText = rawText ? /有效[期内].{0,10}[\d一二三四五六七八九十]+\s*[天日月周年]/.test(rawText) : false
+    // 原始文本匹配：支持"有效期**天"等用占位符代替数字的写法
+    const hasValidityInRawText = rawText ? /有效[期内].{0,20}[天日月周年]/.test(rawText) : false
 
     if (!validityLooksValid && !hasValidityInRawText) {
       docErrors.push({

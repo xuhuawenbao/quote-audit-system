@@ -160,7 +160,7 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
 
   let validLineCount = 0
   const dataItems = items.filter(item => !isEmptyRow(item) && !item.isTotalRow)
-  const totalRow = items.find(item => item.isTotalRow)
+  const totalRows = items.filter(item => item.isTotalRow)
 
   // 校验序号连续性
   const seqErrors = checkSequence(dataItems)
@@ -327,9 +327,18 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
   }
 
   // ===== 合计行校验（仅Excel场景做合计校验，OCR跳过）=====
-  if (totalRow) {
-    const totalErrors = checkTotalRow(totalRow, dataItems, skipCalcChecks)
-    lineErrors.push(...totalErrors)
+  // 对每个合计行分别校验，只比对同分段内的数据行
+  // 结算单等带多段合计的场景（原合同小计+变更小计）需要分段处理
+  for (const totalRow of totalRows) {
+    const sectionItems = dataItems.filter(item => item.rowIndex < totalRow.rowIndex)
+    // 排除已经被前面总合计行覆盖的数据行
+    const prevTotals = totalRows.filter(t => t.rowIndex < totalRow.rowIndex)
+    const prevMaxRow = prevTotals.length > 0 ? Math.max(...prevTotals.map(t => t.rowIndex)) : 0
+    const sectionData = sectionItems.filter(item => item.rowIndex > prevMaxRow)
+    if (sectionData.length > 0) {
+      const totalErrors = checkTotalRow(totalRow, sectionData, skipCalcChecks)
+      lineErrors.push(...totalErrors)
+    }
   }
 
   // ===== 汇总 =====

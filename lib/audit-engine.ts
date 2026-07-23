@@ -551,11 +551,12 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     const row = rows[i]
     if (!row || row.every(v => v === undefined || v === null || v === '')) continue
 
-    // 判断是否为合计行：不仅看首列，也检查整行中是否出现合计/小计等字样（忽略空格）
+    // 判断是否为合计行：检查首列及前部数据列（排除备注等文本列，避免备注中"合计"字样误触）
     const firstCell = String(row[0] || '').trim()
-    const rowText = row.map(v => String(v || '').trim()).join(' ')
-    const normalizedRowText = rowText.replace(/\s+/g, '')
-    const isTotalRow = TOTAL_KEYWORDS.some(k => normalizedRowText.includes(k))
+    // 取前部数据列（最多取前10列），排除备注/综合说明等可能含"合计"字样的文本列
+    const dataCols = row.slice(0, Math.min(10, row.length)).map(v => String(v || '').trim()).filter(Boolean).join(' ')
+    const normalizedDataCols = dataCols.replace(/\s+/g, '')
+    const isTotalRow = TOTAL_KEYWORDS.some(k => normalizedDataCols.includes(k))
 
     // 解析各列
     const rawSpec = getCell(row, columnMap.spec)

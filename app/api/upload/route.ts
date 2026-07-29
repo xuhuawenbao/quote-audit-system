@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         const diff = Math.abs(parseFloat(e.actual) - parseFloat(e.expected))
         // 差异 >= 0.1 的视为真正的计算错误，保留不过滤
         // 公式缓存差异通常 < 0.05（如 26400.00 vs 26400.03）
-        return diff < 0.1
+        return diff >= 0.1
       }
       // 没有expected/actual信息的也过滤掉（无法判断是否为误报）
       return false

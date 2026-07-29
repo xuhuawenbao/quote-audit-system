@@ -57,10 +57,20 @@ export async function POST(request: NextRequest) {
     const auditResult = auditQuote(items, doc, rawText)
 
     // 过滤掉含税价/含税金额的公式缓存误报
-    // xlsx免费版读取公式列的旧缓存值，CALC002/CALC003必然误报，仅保留CALC001
-    auditResult.lineItems.errors = auditResult.lineItems.errors.filter(
-      e => e.code !== 'CALC002' && e.code !== 'CALC003'
-    )
+    // xlsx免费版读取公式列的旧缓存值，CALC002/CALC003可能因浮点精度产生微小差异
+    // 但真正的计算错误（手动输入错误导致的大差异）应当保留，不能整体过滤
+    auditResult.lineItems.errors = auditResult.lineItems.errors.filter(e => {
+      if (e.code !== 'CALC002' && e.code !== 'CALC003') return true
+      // 有expected/actual信息的，计算差异大小，仅过滤微小差异（公式缓存精度误差）
+      if (e.expected && e.actual) {
+        const diff = Math.abs(parseFloat(e.actual) - parseFloat(e.expected))
+        // 差异 >= 0.1 的视为真正的计算错误，保留不过滤
+        // 公式缓存差异通常 < 0.05（如 26400.00 vs 26400.03）
+        return diff < 0.1
+      }
+      // 没有expected/actual信息的也过滤掉（无法判断是否为误报）
+      return false
+    })
     // 重新计算过滤后的错误统计
     const allFiltered = [...(auditResult.documentLevel?.errors || []), ...auditResult.lineItems.errors]
     const majorCount = allFiltered.filter(e => e.severity === 'major').length

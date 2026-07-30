@@ -97,8 +97,8 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
     const validityLooksValid = validityValue.length > 0 &&
       validityValue.includes('有效') &&
       /[天日月周年]/.test(validityValue)
-    // 原始文本匹配：支持"有效期**天"等用占位符代替数字的写法
-    const hasValidityInRawText = rawText ? /有效[期内].{0,20}[天日月周年]/.test(rawText) : false
+    // 原始文本匹配：有效期必须有具体天数（含数字），"有效期**天"不算有效
+    const hasValidityInRawText = rawText ? /有效[期内].{0,20}\d+[天日月周年]/.test(rawText) : false
 
     if (!validityLooksValid && !hasValidityInRawText) {
       docErrors.push({

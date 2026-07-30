@@ -36,12 +36,21 @@ export async function POST(request: NextRequest) {
     // 支持同一 xlsx 文件包含隐藏的报价单+可见的结算单等场景
     let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '' }
     let bestDataCount = 0
+    const sheetTypes: { name: string; type: '报价单' | '结算单' | '其他' }[] = []
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName]
       // 跳过隐藏的 Sheet（如用户模板中隐藏的报价单底稿）
       if (sheet['!hidden'] || (sheet as any).sheet_state === 'hidden') continue
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
       const { items, doc } = parseExcelData(rows)
+      // 记录该Sheet的类型（判断前三行是否含报价单/结算单标题）
+      const sheetRawText = rows.slice(0, 5).map(r => r.join(' ')).join(' ')
+      const isQuote = /报价[单表书]/.test(doc.title || '') || /报价[单表书]/.test(sheetRawText)
+      const isSettle = /结算[单表书]/.test(doc.title || '') || /结算[单表书]/.test(sheetRawText)
+      if (isQuote && !isSettle) sheetTypes.push({ name: sheetName, type: '报价单' })
+      else if (isSettle && !isQuote) sheetTypes.push({ name: sheetName, type: '结算单' })
+      else sheetTypes.push({ name: sheetName, type: '其他' })
+
       // 跳过完全无法解析出数据行的 Sheet
       const dataItems = items.filter((i: any) => !i.isTotalRow && (i.name || i.quantity !== undefined))
       if (dataItems.length > bestDataCount) {
@@ -49,6 +58,16 @@ export async function POST(request: NextRequest) {
         bestSheet = { items, doc, rawText: rows.map(r => r.join('\t')).join('\n'), sheetName }
       }
     }
+
+    // 检查是否有混用（报价单文件附带了结算单Sheet，或反之）
+    const selectedType = sheetTypes.find(t => t.name === bestSheet.sheetName)
+    const oppositeTypes = sheetTypes.filter(t =>
+      t.name !== bestSheet.sheetName &&
+      ((selectedType?.type === '报价单' && t.type === '结算单') ||
+       (selectedType?.type === '结算单' && t.type === '报价单'))
+    )
+    // 仅在主文档类型明确（报价单或结算单）、且确实存在反类型Sheet时报错
+    const hasMixedSheets = oppositeTypes.length > 0 && (selectedType?.type === '报价单' || selectedType?.type === '结算单')
 
     const { items, doc } = bestSheet
     const rawText = bestSheet.rawText
@@ -71,6 +90,17 @@ export async function POST(request: NextRequest) {
       // 没有expected/actual信息的也过滤掉（无法判断是否为误报）
       return false
     })
+
+    // DOC009: 文件包含混用的其他类型单据表（报价单+结算单混用）
+    if (hasMixedSheets) {
+      const oppositeNames = oppositeTypes.map(t => t.name).join('、')
+      auditResult.documentLevel?.errors.push({
+        code: 'DOC009',
+        field: 'multiSheet',
+        message: `文件包含${selectedType?.type === '报价单' ? '结算单' : '报价单'}表（${oppositeNames}），可能为误传或混用，请确认并移除`,
+        severity: 'minor',
+      })
+    }
     // 重新计算过滤后的错误统计
     const allFiltered = [...(auditResult.documentLevel?.errors || []), ...auditResult.lineItems.errors]
     const majorCount = allFiltered.filter(e => e.severity === 'major').length

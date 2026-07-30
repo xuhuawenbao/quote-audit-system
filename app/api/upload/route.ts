@@ -36,6 +36,8 @@ export async function POST(request: NextRequest) {
     // 支持同一 xlsx 文件包含隐藏的报价单+可见的结算单等场景
     let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '' }
     let bestDataCount = 0
+    // 同时收集所有可见Sheet的原始文本（用于占位符等全文件检查）
+    let allSheetsRawText = ''
     const sheetTypes: { name: string; type: '报价单' | '结算单' | '其他' }[] = []
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName]
@@ -50,6 +52,9 @@ export async function POST(request: NextRequest) {
       if (isQuote && !isSettle) sheetTypes.push({ name: sheetName, type: '报价单' })
       else if (isSettle && !isQuote) sheetTypes.push({ name: sheetName, type: '结算单' })
       else sheetTypes.push({ name: sheetName, type: '其他' })
+
+      // 累加所有可见Sheet的原始文本（给DOC003做全文件占位符检查）
+      allSheetsRawText += rows.map(r => r.join('\t')).join('\n') + '\n'
 
       // 跳过完全无法解析出数据行的 Sheet
       const dataItems = items.filter((i: any) => !i.isTotalRow && (i.name || i.quantity !== undefined))
@@ -70,7 +75,8 @@ export async function POST(request: NextRequest) {
     const hasMixedSheets = oppositeTypes.length > 0 && (selectedType?.type === '报价单' || selectedType?.type === '结算单')
 
     const { items, doc } = bestSheet
-    const rawText = bestSheet.rawText
+    // 用所有可见Sheet的合并文本传给审核引擎（让DOC003等全文件检查能发现其他Sheet中的问题）
+    const rawText = allSheetsRawText
 
     // 第一步：用原始数据审核（修正前，让审核引擎看到真实值）
     const auditResult = auditQuote(items, doc, rawText)

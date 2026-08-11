@@ -382,7 +382,7 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
 
 // ========== Excel 解析 ==========
 
-export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: DocumentInfo } {
+export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: DocumentInfo, headerRowIndex?: number, columnMap?: Record<string, number> } {
   const items: QuoteItem[] = []
   const doc: DocumentInfo = {}
 
@@ -587,7 +587,7 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
     items.push(item)
   }
 
-  return { items, doc }
+  return { items, doc, headerRowIndex, columnMap }
 }
 
 // ========== 辅助函数 ==========

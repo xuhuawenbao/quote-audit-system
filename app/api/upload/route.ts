@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // 遍历所有 Sheet，优先选择可见的 Sheet 中数据行最多的来审核
     // 支持同一 xlsx 文件包含隐藏的报价单+可见的结算单等场景
-    let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '' }
+    let bestSheet = { items: [] as any[], doc: {} as any, rawText: '', sheetName: '', headerRowIndex: 0 as number, columnMap: {} as Record<string, number> }
     let bestDataCount = 0
     // 同时收集所有可见Sheet的原始文本（用于占位符等全文件检查）
     let allSheetsRawText = ''
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       // 跳过隐藏的 Sheet（如用户模板中隐藏的报价单底稿）
       if (sheet['!hidden'] || (sheet as any).sheet_state === 'hidden') continue
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][]
-      const { items, doc } = parseExcelData(rows)
+      const { items, doc, headerRowIndex, columnMap } = parseExcelData(rows)
       // 记录该Sheet的类型（判断前三行是否含报价单/结算单标题）
       const sheetRawText = rows.slice(0, 5).map(r => r.join(' ')).join(' ')
       const isQuote = /报价[单表书]/.test(doc.title || '') || /报价[单表书]/.test(sheetRawText)
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       const dataItems = items.filter((i: any) => !i.isTotalRow && (i.name || i.quantity !== undefined))
       if (dataItems.length > bestDataCount) {
         bestDataCount = dataItems.length
-        bestSheet = { items, doc, rawText: rows.map(r => r.join('\t')).join('\n'), sheetName }
+        bestSheet = { items, doc, rawText: rows.map(r => r.join('\t')).join('\n'), sheetName, headerRowIndex: headerRowIndex ?? 0, columnMap: columnMap ?? {} }
       }
     }
 
@@ -81,16 +81,33 @@ export async function POST(request: NextRequest) {
     // 第一步：用原始数据审核（修正前，让审核引擎看到真实值）
     const auditResult = auditQuote(items, doc, rawText)
 
-    // 过滤掉含税价/含税金额的公式缓存误报
-    // xlsx免费版读取公式列的旧缓存值，CALC002/CALC003可能因浮点精度产生微小差异
-    // 但真正的计算错误（手动输入错误导致的大差异）应当保留，不能整体过滤
+    // 过滤含税价/含税金额的公式缓存误报
+    // Excel公式列（如含税单价=不含税单价*(1+税率)、含税金额=数量*含税单价）内部用未舍入精度计算，
+    // 显示值经过四舍五入，用显示值反推必然产生微小差异（如6.102显示为6.10，50*6.102=305.10 vs 50*6.10=305.00）。
+    // 因此：公式单元格的结果不校验（公式算出的值必然正确），只校验手动输入的单元格（真实计算错误保留）。
+    const auditSheet = workbook.Sheets[bestSheet.sheetName]
+    const isFormulaCell = (row: number, col: number | undefined): boolean => {
+      if (col === undefined || col < 0) return false
+      const addr = XLSX.utils.encode_cell({ r: row, c: col })
+      const cell = auditSheet[addr]
+      return !!cell && typeof (cell as any).f === 'string'
+    }
     auditResult.lineItems.errors = auditResult.lineItems.errors.filter(e => {
       if (e.code !== 'CALC002' && e.code !== 'CALC003') return true
-      // 有expected/actual信息的，计算差异大小，仅过滤微小差异（公式缓存精度误差）
+      // 对应字段列号（CALC002校验含税单价列，CALC003校验含税金额列）
+      const field = e.code === 'CALC002' ? 'priceWithTax' : 'amountWithTax'
+      const col = bestSheet.columnMap[field]
+      // CALC003的期望值依赖含税单价，含税单价若是公式列（未舍入精度），也会导致CALC003误报
+      const priceWithTaxCol = bestSheet.columnMap['priceWithTax']
+      // 该行对应的Excel实际行号（item.rowIndex从1开始，表头行偏移）
+      const excelRow = bestSheet.headerRowIndex + (e.rowIndex ?? 0)
+      // 公式单元格：结果为Excel自身计算，必然正确，过滤
+      if (isFormulaCell(excelRow, col) || (e.code === 'CALC003' && isFormulaCell(excelRow, priceWithTaxCol))) {
+        return false
+      }
+      // 手动输入单元格：按差异大小判断，差异 >= 0.1 视为真实计算错误，保留
       if (e.expected && e.actual) {
         const diff = Math.abs(parseFloat(e.actual) - parseFloat(e.expected))
-        // 差异 >= 0.1 的视为真正的计算错误，保留不过滤
-        // 公式缓存差异通常 < 0.05（如 26400.00 vs 26400.03）
         return diff >= 0.1
       }
       // 没有expected/actual信息的也过滤掉（无法判断是否为误报）

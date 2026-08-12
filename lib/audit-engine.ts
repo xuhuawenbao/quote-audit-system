@@ -77,6 +77,11 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
       const regex = new RegExp('(?<![*])[*][*][*](?![*])')
       return regex.test(fullText)
     }
+    if (p === 'xxx' || p === 'XXX') {
+      // xxx/XXX 检查：必须是独立出现，不能是其他单词的一部分（如"XXXL码"中的XXX不是占位符）
+      const regex = new RegExp(`(?<![a-zA-Z0-9\u4e00-\u9fff])${p}(?![a-zA-Z0-9\u4e00-\u9fff])`)
+      return regex.test(fullText)
+    }
     return fullText.includes(p)
   })
   if (hasPlaceholder) {

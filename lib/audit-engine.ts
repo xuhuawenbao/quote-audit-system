@@ -513,15 +513,15 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       }
 
       // 填报日期 — 同时匹配"日期"、"填报日期"、"报价日期"等
-      if (/(?:填报|报价|编制)?日[期到]|日[期到]/.test(cellClean) && !doc.filingDate) {
-        // 先尝试带前缀的（填报日期：）
-        let colonMatch = cellClean.match(/(?:填报|报价|编制)日[期到]?[：:]\s*(.{2,20})/)
+      if (/(?:填报|报价|编制)?日[期到]/.test(cellClean) && !doc.filingDate) {
+        // 先尝试带前缀的（填报日期：/填报日期；）
+        let colonMatch = cellClean.match(/(?:填报|报价|编制)日[期到]?[：:；;]\s*(.{2,20})/)
         if (colonMatch) {
           doc.filingDate = colonMatch[1].trim()
           continue
         }
-        // 再尝试裸日期（日期：2026.7.6）
-        colonMatch = cellClean.match(/日[期到]?[：:]\s*(.{2,20})/)
+        // 再尝试裸日期（日期：2026.7.6 / 日期；2026.7.6）
+        colonMatch = cellClean.match(/日[期到]?[：:；;]\s*(.{2,20})/)
         if (colonMatch) {
           doc.filingDate = colonMatch[1].trim()
           continue

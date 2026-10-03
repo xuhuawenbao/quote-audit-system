@@ -20,7 +20,15 @@ export default function AdminPage() {
   const loadRecords = async () => {
     setLoading(true)
     try {
-      const resp = await fetch('/api/records')
+      // 列表接口需要管理员密码（2026-10-03 加固：不再允许匿名拉取记录）
+      const resp = await fetch('/api/records', {
+        headers: { 'x-admin-key': password },
+      })
+      if (resp.status === 401) {
+        setAuthenticated(false)
+        setLoginError('密码已失效，请重新登录')
+        return
+      }
       const data = await resp.json()
       if (data.success) {
         setRecords(data.records)

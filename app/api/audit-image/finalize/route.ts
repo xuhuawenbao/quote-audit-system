@@ -51,7 +51,25 @@ export async function POST(request: NextRequest) {
       fileName: fileName || 'image.png',
       fileUrl: undefined,
       fileType: 'image',
-      auditResult: { ...auditResult, id: auditResult.id || generateId() },
+      // 明细行一并落库（2026-10-03），口径同 upload 路由
+      auditResult: {
+        ...auditResult,
+        id: auditResult.id || generateId(),
+        items: items
+          .filter((it: any) => !it.isTotalRow && (it.name || it.quantity !== undefined))
+          .map((it: any) => ({
+            rowIndex: it.rowIndex,
+            name: it.name || '',
+            spec: it.spec || '',
+            brand: it.brand || '',
+            unit: it.unit || '',
+            quantity: it.quantity ?? null,
+            priceWithoutTax: it.priceWithoutTax ?? null,
+            taxRate: it.taxRate ?? null,
+            priceWithTax: it.priceWithTax ?? null,
+            amountWithTax: it.amountWithTax ?? null,
+          })),
+      },
     })
 
     return NextResponse.json({ success: true, recordId: record.id, auditResult })

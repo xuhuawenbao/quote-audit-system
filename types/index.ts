@@ -72,8 +72,28 @@ export interface AuditResult {
     checked: boolean
     items: PriceDeviation[]
   }
+  /**
+   * 明细行（2026-10-03 起落库）。
+   * 有了它才能做"同一物料跨项目价差"这类分析报告；
+   * 更早的记录没有这个字段，明细补不回来。
+   */
+  items?: StoredQuoteItem[]
   summary: string
   createdAt: string
+}
+
+/** 落库保存的报价单明细行 */
+export interface StoredQuoteItem {
+  rowIndex: number
+  name: string
+  spec: string
+  brand: string
+  unit: string
+  quantity: number | null
+  priceWithoutTax: number | null
+  taxRate: number | null
+  priceWithTax: number | null
+  amountWithTax: number | null
 }
 
 export interface QuoteRecord {

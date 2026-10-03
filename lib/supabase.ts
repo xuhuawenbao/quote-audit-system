@@ -35,12 +35,13 @@ export async function getRecordById(id: string) {
   return data
 }
 
-export async function getAllRecords(limit: number = 100) {
+export async function getAllRecords(limit: number = 100, offset: number = 0) {
+  // 支持翻页：工作台要把一年的记录拉下来做分析报告
   const { data, error } = await supabase
     .from('quote_records')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(limit)
+    .range(offset, offset + Math.max(1, limit) - 1)
 
   if (error) throw error
   return data || []

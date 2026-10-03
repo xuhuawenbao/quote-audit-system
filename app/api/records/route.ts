@@ -31,7 +31,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const records = await getAllRecords(100)
+    // limit/offset：工作台要把整年记录拉去做分析，默认仍是 100 条
+    const limitRaw = parseInt(searchParams.get('limit') || '100', 10)
+    const offsetRaw = parseInt(searchParams.get('offset') || '0', 10)
+    const limit = Math.min(Math.max(isNaN(limitRaw) ? 100 : limitRaw, 1), 2000)
+    const offset = Math.max(isNaN(offsetRaw) ? 0 : offsetRaw, 0)
+
+    const records = await getAllRecords(limit, offset)
     return NextResponse.json({ success: true, records })
 
   } catch (error: any) {

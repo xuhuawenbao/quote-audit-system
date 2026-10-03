@@ -172,7 +172,26 @@ export async function POST(request: NextRequest) {
       fileName: file.name,
       fileUrl: undefined,
       fileType: 'excel',
-      auditResult: { ...auditResult, id: auditResult.id || generateId() },
+      // 明细行一并落库（2026-10-03）：只有结论没有明细，后面做不了
+      // "同一物料跨项目价差"这类分析报告，所以把解析出的行都存下来。
+      auditResult: {
+        ...auditResult,
+        id: auditResult.id || generateId(),
+        items: items
+          .filter((it: any) => !it.isTotalRow && (it.name || it.quantity !== undefined))
+          .map((it: any) => ({
+            rowIndex: it.rowIndex,
+            name: it.name || '',
+            spec: it.spec || '',
+            brand: it.brand || '',
+            unit: it.unit || '',
+            quantity: it.quantity ?? null,
+            priceWithoutTax: it.priceWithoutTax ?? null,
+            taxRate: it.taxRate ?? null,
+            priceWithTax: it.priceWithTax ?? null,
+            amountWithTax: it.amountWithTax ?? null,
+          })),
+      },
     })
 
     return NextResponse.json({

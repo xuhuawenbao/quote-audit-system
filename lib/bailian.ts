@@ -73,11 +73,11 @@ export async function ocrToStructured(imageDataUri: string): Promise<{
 
 【要求】
 - doc中每个字段：看图片，有什么填什么。没找到填空字符串""
-- customerName：在表头找"客户""甲方""致"后面的文字，或者表头区域看起来像公司名称的文字都行
+- customerName：优先找"客户""甲方""致"后面的文字；如果表头没有这几项、只有"供应商名称""供货方""供方""乙方"，就取供应商名称；再兜底取表头区域看起来像公司名称的文字
+- contactPhone：表头里"电话""手机""Tel""联系方式"后面的号码，座机号带区号和分机的原样保留（如05923521111-8447）
 - projectName：在表头找"项目"后面的文字
 - editorName：找"编制""制表""报价人"后面的文字
 - contactName：找"联系人"后面的文字
-- contactPhone：找"电话""手机""Tel"后面的数字
 - validityPeriod：找"有效期"后面的文字，如"30天"
 - items的每个字段：数字填数字(不要加引号)，找不到填null
 - 不要编造数据
@@ -117,8 +117,9 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
   const text = rawText
 
   // 客户名称：找冒号后面的内容
+  // 供应商报价单表头常只有"供应商名称"（无客户/甲方），此时取供应商名称作为文档主体
   if (!result.customerName || !result.customerName.trim()) {
-    const m = text.match(/(?:客户|甲方|致)[：:]\s*([^\n\r]{2,20})/)
+    const m = text.match(/(?:客户|甲方|致|供应商|供货方|供方|乙方)[名称]*[：:]\s*([^\n\r]{2,30})/)
     if (m) result.customerName = m[1].trim()
   }
 
@@ -127,7 +128,8 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
     const m = text.match(/(?:项目|工程)[名称]*[：:]\s*([^\n\r]{2,30})/)
     if (m) {
       const v = m[1].trim()
-      if (!v.includes('项目') && !v.includes('名称')) result.projectName = v
+      // 只排除纯标签文字（如"项目名称"本身），项目名含"项目"二字（如上坤上街项目）是正常的，不能过滤
+      if (!/^(?:名称|项目名称|工程名称|姓名)$/.test(v)) result.projectName = v
     }
   }
 
@@ -142,9 +144,9 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
     }
   }
 
-  // 编制人
+  // 编制人 — 支持"项目编制人：王凤岚 18217026340"这类带前缀的写法，姓名遇到空格/数字即止
   if (!result.editorName || !result.editorName.trim()) {
-    const m = text.match(/(?:编制|制表|报价人)[：:]\s*([^\s，,。、\n\r]{1,8})/)
+    const m = text.match(/(?:编制|制表|报价)[人]?[：:]\s*([^\s，,。、\d\n\r]{1,8})/)
     if (m) result.editorName = m[1].trim()
   }
 
@@ -155,8 +157,9 @@ export function extractDocFromRawText(rawText: string, doc: Record<string, any>)
   }
 
   // 电话
+  // 支持手机号、座机号带区号及分机（如 05923521111-8447 / 0592-3521111 / 021-12345678 转 801）
   if (!result.contactPhone || !result.contactPhone.trim()) {
-    const m = text.match(/(?:电话|手机|Tel)[：:]\s*([\d\-]{7,15})/)
+    const m = text.match(/(?:电话|手机|Tel|联系电话|联系方式)[：:]\s*([\d\-\s()（）转]{7,25})/)
     if (m) result.contactPhone = m[1].trim()
   }
 

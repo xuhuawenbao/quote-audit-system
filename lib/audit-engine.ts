@@ -151,7 +151,10 @@ export function auditQuote(items: QuoteItem[], doc: DocumentInfo, rawText?: stri
   // 独立校验，即使联系人已填，电话没填也应提醒
   // 增加 rawText 兜底：可能在合并单元格中，结构化提取遗漏了
   const phoneValue = (doc.contactPhone || '').trim()
-  const hasPhoneInRawText = rawText ? /[电话手机Tel]\s*[：:]?\s*1[3-9]\d{9}/.test(rawText) : false
+  // 兜底：手机号（1开头11位）或座机号（0开头区号+号码，可带分机）
+  const hasPhoneInRawText = rawText
+    ? /[电话手机Tel联系方式]\s*[：:]?\s*(?:1[3-9]\d{9}|0\d{2,3}[- ]?\d{7,8}(?:[-转]\d{1,6})?)/.test(rawText)
+    : false
   if (!phoneValue && !hasPhoneInRawText) {
     docErrors.push({
       code: 'DOC008',
@@ -411,11 +414,11 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       if (!cell) continue
       const nextCell = String(row[c + 1] || '').trim()
 
-      // 客户名称：匹配"客户"或"甲方"或"业主"（去掉换行符）
+      // 客户名称：匹配"客户"或"甲方"或"业主"，供应商报价单表头常只有"供应商名称"，一并接受（去掉换行符）
       const cellClean = cell.replace(/[\r\n]+/g, '')
-      if (/^(?:客户|甲方|业主)/.test(cellClean) && !doc.customerName) {
+      if (/^(?:客户|甲方|业主|供应商|供货方|供方|乙方)/.test(cellClean) && !doc.customerName) {
         // 优先级1: 冒号后的文字（如"客户名称：离公司"在同一单元格）
-        const colonMatch = cellClean.match(/(?:客户|甲方|业主)(?:名称)?[：:]\s*(.{2,20})/)
+        const colonMatch = cellClean.match(/(?:客户|甲方|业主|供应商|供货方|供方|乙方)(?:名称)?[：:]\s*(.{2,30})/)
         if (colonMatch) {
           const val = colonMatch[1].trim()
           if (val.length >= 2 && !PLACEHOLDERS.some(p => val.includes(p))) {
@@ -463,9 +466,9 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
         }
       }
 
-      // 编制人
+      // 编制人 — 支持"项目编制人：王凤岚 18217026340"，姓名遇到空格/数字即止
       if (/(?:编制|报价|制表)人/.test(cellClean) && !doc.editorName) {
-        const colonMatch = cellClean.match(/(?:编制|报价|制表)人[：:]\s*(.{1,8})/)
+        const colonMatch = cellClean.match(/(?:编制|报价|制表)人[：:]\s*([^\s，,。、\d]{1,8})/)
         if (colonMatch) {
           doc.editorName = colonMatch[1].trim()
           continue
@@ -490,22 +493,23 @@ export function parseExcelData(rows: any[][]): { items: QuoteItem[], doc: Docume
       }
 
       // 电话 — 同时检查当前单元格和右侧相邻单元格含数字的情况
-      if (/(?:电话|手机|Tel|联系电话)/.test(cellClean) && !doc.contactPhone) {
+      // 号码支持手机号与座机号带区号/分机（如 05923521111-8447）
+      if (/(?:电话|手机|Tel|联系电话|联系方式)/.test(cellClean) && !doc.contactPhone) {
         // 同一单元格冒号后
-        const colonMatch = cellClean.match(/(?:电话|手机|Tel|联系电话)[：:]\s*([\d\-]{7,15})/)
+        const colonMatch = cellClean.match(/(?:电话|手机|Tel|联系电话|联系方式)[：:]\s*([\d\-\s()（）转]{7,25})/)
         if (colonMatch) {
           doc.contactPhone = colonMatch[1].trim()
           continue
         }
         // 同一单元格内连续数字（无冒号，如"电话13026713315"）
-        const bareMatch = cellClean.match(/(?:电话|手机|Tel|联系电话)\s*([\d\-]{7,15})/)
+        const bareMatch = cellClean.match(/(?:电话|手机|Tel|联系电话|联系方式)\s*([\d\-\s()（）转]{7,25})/)
         if (bareMatch) {
           doc.contactPhone = bareMatch[1].trim()
           continue
         }
         if (nextCell) {
           const phoneVal = nextCell.replace(/[\s\-]/g, '')
-          if (/[\d]{7,15}/.test(phoneVal)) {
+          if (/[\d]{7,25}/.test(phoneVal)) {
             doc.contactPhone = nextCell
             continue
           }
